@@ -36,10 +36,10 @@ Install the package into the same Python environment that runs Fava:
 
 ```sh
 python -m pip install \
-  "git+https://github.com/OWNER/fava-account-maintenance.git@v0.1.0"
+  "git+https://github.com/hsiuhsiu/fava-account-maintenance.git@v0.1.0"
 ```
 
-Replace `OWNER` after the repository is published. For a local checkout:
+For a local checkout:
 
 ```sh
 python -m pip install ./fava-account-maintenance
@@ -49,7 +49,7 @@ If Fava was installed with `pipx`, inject the extension into that environment:
 
 ```sh
 pipx inject fava \
-  "git+https://github.com/OWNER/fava-account-maintenance.git@v0.1.0"
+  "git+https://github.com/hsiuhsiu/fava-account-maintenance.git@v0.1.0"
 ```
 
 Then enable the extension in the main Beancount file:

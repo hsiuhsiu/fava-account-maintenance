@@ -21,6 +21,11 @@ dependencies = [
   "fava>=1.30.12,<1.31",
 ]
 
+[project.urls]
+Homepage = "https://github.com/hsiuhsiu/fava-account-maintenance"
+Repository = "https://github.com/hsiuhsiu/fava-account-maintenance.git"
+Issues = "https://github.com/hsiuhsiu/fava-account-maintenance/issues"
+
 [project.optional-dependencies]
 dev = [
   "build>=1.2",
