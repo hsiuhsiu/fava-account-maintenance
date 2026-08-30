@@ -1,0 +1,827 @@
+{% set d = extension.compute() %}
+
+{% macro render_node(node) %}
+  {% if node.children %}
+    <li class="am-node am-group" data-am-node data-am-modes="{{ node.modes|join(' ') }}">
+      <details{% if node.depth == 0 %} open{% endif %}>
+        <summary data-am-key="{{ node.key }}">
+          <span class="am-caret" aria-hidden="true"></span>
+          <span class="am-node-name">{{ node.name }}</span>
+          <span class="am-node-count">{{ node.counts.total }}</span>
+          {% if node.counts.needs_review %}
+            <span class="am-node-alert" title="{{ node.counts.needs_review }} 個帳戶需要查看">
+              {{ node.counts.needs_review }}
+            </span>
+          {% endif %}
+        </summary>
+        <ul>
+          {% for child in node.children %}
+            {{ render_node(child) }}
+          {% endfor %}
+        </ul>
+      </details>
+    </li>
+  {% else %}
+    <li class="am-node am-leaf" data-am-node data-am-modes="{{ node.modes|join(' ') }}">
+      <button type="button" data-am-key="{{ node.key }}">
+        <span class="am-node-name">
+          {{ node.name }}
+          {% if node.leaf.nickname %}<small>{{ node.leaf.nickname }}</small>{% endif %}
+        </span>
+        {% if node.leaf.needs_review %}
+          <span class="am-state am-state-review">查看</span>
+        {% elif node.leaf.backfill_candidate %}
+          <span class="am-state am-state-backfill">可回溯</span>
+        {% elif node.leaf.lifecycle == 'closed' %}
+          <span class="am-state">已關閉</span>
+        {% elif node.leaf.lifecycle == 'future' %}
+          <span class="am-state">未來</span>
+        {% endif %}
+      </button>
+    </li>
+  {% endif %}
+{% endmacro %}
+
+<section id="account-maintenance-root" class="am-page"
+         data-account-maintenance data-am-default-view="balance">
+  <div class="am-header">
+    <div>
+      <p class="am-eyebrow">截至 {{ d.today }}</p>
+      <h2>Account Maintenance</h2>
+      <p class="am-intro">從帳戶樹查看生命週期、餘額核對、歷史起點、Pad 與 buffer 狀況。</p>
+    </div>
+    <div class="am-summary" aria-label="帳戶摘要">
+      <span><strong>{{ d.summary.open }}</strong> 開啟</span>
+      <span><strong>{{ d.summary.closed }}</strong> 關閉</span>
+      <span><strong>{{ d.summary.needs_review }}</strong> 需查看</span>
+      <span><strong>{{ d.summary.backfill }}</strong> 可回溯</span>
+      {% if d.summary.future %}<span><strong>{{ d.summary.future }}</strong> 未來</span>{% endif %}
+    </div>
+  </div>
+
+  <nav class="am-filters" aria-label="帳戶維護視圖">
+    <button type="button" data-am-filter="all" aria-pressed="false">
+      全部 <span>{{ d.summary.total }}</span>
+    </button>
+    <button type="button" data-am-filter="balance" aria-pressed="true"
+            title="{{ d.summary.balance_due }} 個帳戶目前需要更新；共追蹤 {{ d.summary.balance_tracked }} 個">
+      Balance 更新 <span>{{ d.summary.balance_due }}</span>
+    </button>
+    <button type="button" data-am-filter="needs" aria-pressed="false">
+      需要查看 <span>{{ d.summary.needs_review }}</span>
+    </button>
+    <button type="button" data-am-filter="backfill" aria-pressed="false">
+      可向前追溯 <span>{{ d.summary.backfill }}</span>
+    </button>
+    <button type="button" data-am-filter="closed" aria-pressed="false">
+      已關閉 <span>{{ d.summary.closed }}</span>
+    </button>
+  </nav>
+
+  <section class="am-panel am-balance-view" data-am-balance-view>
+    <div class="am-balance-header">
+      <div>
+        <p class="am-eyebrow">Balance Freshness</p>
+        <h3>下一個該核對的帳戶</h3>
+        <p>從未核對與缺漏幣別優先，其次是逾期天數最多；尚未逾期則按最接近期限排列。</p>
+      </div>
+      <div class="am-balance-totals" aria-label="Balance 更新摘要">
+        <strong>{{ d.summary.balance_due }}</strong> 待更新
+        <span>／ {{ d.summary.balance_tracked }} 個有設定週期</span>
+      </div>
+    </div>
+
+    {% if d.balance_queue %}
+      <div class="am-table-scroll">
+        <table class="am-freshness-table">
+          <thead>
+            <tr>
+              <th>Account</th>
+              <th>週期</th>
+              <th>各幣別最後 Balance</th>
+              <th>已過</th>
+              <th>狀態</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in d.balance_queue %}
+              <tr class="am-freshness-row am-freshness-{{ r.status }}">
+                <td class="am-freshness-account">
+                  <a href="{{ url_for('account', name=r.account) }}">{{ r.account }}</a>
+                  {% if r.nickname %}<small>{{ r.nickname }}</small>{% endif %}
+                </td>
+                <td>{{ r.frequency }} 天</td>
+                <td>
+                  {% if r.units %}
+                    <div class="am-unit-list">
+                      {% for unit in r.units %}
+                        <span class="am-unit am-unit-{{ unit.status }}">
+                          <strong>{{ unit.currency }}</strong>
+                          {% if unit.date %}
+                            {{ unit.date }}
+                          {% else %}
+                            尚未核對
+                          {% endif %}
+                        </span>
+                      {% endfor %}
+                    </div>
+                  {% else %}
+                    <span class="am-muted">尚未有可判定的幣別</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {{ r.days_since if r.days_since is not none else '—' }}
+                  {% if r.days_since is not none %}天{% endif %}
+                </td>
+                <td>
+                  {% if r.status == 'never' %}
+                    <span class="am-freshness-status am-freshness-status-urgent">從未核對</span>
+                  {% elif r.status == 'partial' %}
+                    <span class="am-freshness-status am-freshness-status-urgent">
+                      缺少 {{ r.missing_units|join('、') }}
+                    </span>
+                  {% elif r.status == 'overdue' %}
+                    <span class="am-freshness-status am-freshness-status-overdue">逾期 {{ r.delta }} 天</span>
+                  {% elif r.delta == 0 %}
+                    <span class="am-freshness-status am-freshness-status-due">今天到期</span>
+                  {% else %}
+                    <span class="am-freshness-status am-freshness-status-current">
+                      {{ 0 - r.delta }} 天後到期
+                    </span>
+                  {% endif %}
+                  {% if r.status_ratio is not none %}
+                    <small class="am-ratio">{{ '%.1f'|format(r.status_ratio) }}× 週期</small>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="am-empty">目前沒有設定有效 <code>balance_frequency</code> 的開啟帳戶。</p>
+    {% endif %}
+
+    {% if d.missing_guidance %}
+      <details class="am-missing-guidance">
+        <summary>
+          未設定核對週期
+          <span>{{ d.summary.balance_missing_frequency }}</span>
+        </summary>
+        <p>以下開啟中的 Assets／Liabilities 帳戶沒有有效的 <code>balance_frequency</code>，因此不會進入上方排序。</p>
+        <div class="am-table-scroll">
+          <table class="am-freshness-table am-guidance-table">
+            <thead>
+              <tr>
+                <th>Account</th>
+                <th>最後 Balance</th>
+                <th>已過</th>
+                <th>設定</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in d.missing_guidance %}
+                <tr>
+                  <td class="am-freshness-account">
+                    <a href="{{ url_for('account', name=r.account) }}">{{ r.account }}</a>
+                    {% if r.nickname %}<small>{{ r.nickname }}</small>{% endif %}
+                  </td>
+                  <td>{{ r.last_balance or '—' }}</td>
+                  <td>
+                    {{ r.days_since if r.days_since is not none else '—' }}
+                    {% if r.days_since is not none %}天{% endif %}
+                  </td>
+                  <td>
+                    {% if r.invalid %}
+                      <span class="am-freshness-status am-freshness-status-urgent">設定無效</span>
+                    {% else %}
+                      <span class="am-freshness-status">未設定</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    {% endif %}
+  </section>
+
+  <div class="am-workspace" data-am-tree-view hidden>
+    <section class="am-panel am-tree-panel" aria-label="帳戶樹">
+      {% if d.tree %}
+        <ul class="am-tree">
+          {% for node in d.tree %}
+            {{ render_node(node) }}
+          {% endfor %}
+        </ul>
+        <p class="am-empty" data-am-empty hidden>這個篩選下沒有帳戶。</p>
+      {% else %}
+        <p class="am-empty">找不到已開立的 Assets、Liabilities 或 Equity 帳戶。</p>
+      {% endif %}
+    </section>
+
+    <aside id="account-maintenance-detail" class="am-panel am-detail" aria-live="polite">
+      <p class="am-detail-placeholder">選擇左側的帳戶或群組來查看細節。</p>
+    </aside>
+  </div>
+
+  <script type="application/json" id="account-maintenance-data">{{ d|tojson }}</script>
+</section>
+
+<style>
+  .am-page {
+    --am-line: color-mix(in srgb, currentColor 16%, transparent);
+    --am-faint: color-mix(in srgb, currentColor 5%, transparent);
+    --am-muted: color-mix(in srgb, currentColor 62%, transparent);
+    --am-blue: light-dark(#1f5f91, #83c6fa);
+    --am-blue-bg: light-dark(#eaf4fb, #17364d);
+    --am-amber: light-dark(#855800, #ffd37a);
+    --am-amber-bg: light-dark(#fff3d6, #443313);
+    --am-red: light-dark(#9b332d, #ffaaa3);
+    --am-red-bg: light-dark(#fdeceb, #4b2524);
+    --am-green: light-dark(#206743, #8bd5ae);
+    --am-green-bg: light-dark(#e9f6ef, #193b2b);
+    color: inherit;
+    max-width: 1500px;
+  }
+
+  .am-page [hidden] {
+    display: none !important;
+  }
+
+  .am-header {
+    align-items: end;
+    display: flex;
+    gap: 2rem;
+    justify-content: space-between;
+    margin: .35rem 0 1rem;
+  }
+
+  .am-header h2 {
+    font-size: 1.65rem;
+    letter-spacing: -.025em;
+    margin: .1rem 0 .25rem;
+  }
+
+  .am-eyebrow,
+  .am-intro,
+  .am-detail-subtitle,
+  .am-empty,
+  .am-detail-placeholder {
+    color: var(--am-muted);
+    margin: 0;
+  }
+
+  .am-eyebrow {
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  .am-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .55rem;
+    justify-content: end;
+  }
+
+  .am-summary span {
+    background: var(--am-faint);
+    border: 1px solid var(--am-line);
+    border-radius: .5rem;
+    font-size: .76rem;
+    padding: .35rem .5rem;
+    white-space: nowrap;
+  }
+
+  .am-summary strong {
+    font-size: .9rem;
+    margin-right: .15rem;
+  }
+
+  .am-filters {
+    border-bottom: 1px solid var(--am-line);
+    display: flex;
+    gap: .25rem;
+    margin-bottom: .8rem;
+    overflow-x: auto;
+  }
+
+  .am-filters button {
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    color: var(--am-muted);
+    cursor: pointer;
+    font: inherit;
+    font-size: .82rem;
+    padding: .55rem .7rem .5rem;
+    white-space: nowrap;
+  }
+
+  .am-filters button:hover,
+  .am-filters button[aria-pressed="true"] {
+    border-bottom-color: var(--am-blue);
+    color: inherit;
+  }
+
+  .am-filters button span {
+    background: var(--am-faint);
+    border-radius: 1rem;
+    font-size: .7rem;
+    margin-left: .2rem;
+    padding: .08rem .35rem;
+  }
+
+  .am-workspace {
+    align-items: start;
+    display: grid;
+    gap: .8rem;
+    grid-template-columns: minmax(280px, .85fr) minmax(420px, 1.45fr);
+  }
+
+  .am-balance-view {
+    overflow: hidden;
+  }
+
+  .am-balance-header {
+    align-items: start;
+    display: flex;
+    gap: 1.5rem;
+    justify-content: space-between;
+    padding: 1rem 1.1rem .85rem;
+  }
+
+  .am-balance-header h3 {
+    font-size: 1.1rem;
+    margin: .08rem 0 .25rem;
+  }
+
+  .am-balance-header p:not(.am-eyebrow) {
+    color: var(--am-muted);
+    font-size: .78rem;
+    margin: 0;
+  }
+
+  .am-balance-totals {
+    background: var(--am-faint);
+    border: 1px solid var(--am-line);
+    border-radius: .55rem;
+    flex: 0 0 auto;
+    font-size: .75rem;
+    padding: .55rem .7rem;
+    white-space: nowrap;
+  }
+
+  .am-balance-totals strong {
+    color: var(--am-red);
+    font-size: 1rem;
+  }
+
+  .am-balance-totals span {
+    color: var(--am-muted);
+  }
+
+  .am-table-scroll {
+    overflow-x: auto;
+  }
+
+  .am-freshness-table {
+    border-collapse: collapse;
+    font-size: .77rem;
+    width: 100%;
+  }
+
+  .am-freshness-table th,
+  .am-freshness-table td {
+    border-top: 1px solid var(--am-line);
+    padding: .62rem .75rem;
+    text-align: left;
+    vertical-align: middle;
+  }
+
+  .am-freshness-table th {
+    background: var(--am-faint);
+    color: var(--am-muted);
+    font-size: .67rem;
+    font-weight: 650;
+    letter-spacing: .02em;
+    white-space: nowrap;
+  }
+
+  .am-freshness-table tbody tr:hover {
+    background: var(--am-faint);
+  }
+
+  .am-freshness-row td:first-child {
+    border-left: 3px solid transparent;
+  }
+
+  .am-freshness-never td:first-child,
+  .am-freshness-partial td:first-child {
+    border-left-color: var(--am-red);
+  }
+
+  .am-freshness-overdue td:first-child {
+    border-left-color: var(--am-amber);
+  }
+
+  .am-freshness-account {
+    min-width: 18rem;
+  }
+
+  .am-freshness-account a {
+    overflow-wrap: anywhere;
+  }
+
+  .am-freshness-account small {
+    color: var(--am-muted);
+    display: block;
+    margin-top: .12rem;
+  }
+
+  .am-unit-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem;
+    min-width: 14rem;
+  }
+
+  .am-unit {
+    background: var(--am-faint);
+    border: 1px solid var(--am-line);
+    border-radius: .35rem;
+    padding: .2rem .35rem;
+    white-space: nowrap;
+  }
+
+  .am-unit strong {
+    font-size: .67rem;
+    margin-right: .2rem;
+  }
+
+  .am-unit-missing {
+    background: var(--am-red-bg);
+    border-color: color-mix(in srgb, var(--am-red) 35%, transparent);
+    color: var(--am-red);
+  }
+
+  .am-unit-overdue {
+    background: var(--am-amber-bg);
+    border-color: color-mix(in srgb, var(--am-amber) 35%, transparent);
+    color: var(--am-amber);
+  }
+
+  .am-freshness-status {
+    background: var(--am-faint);
+    border-radius: 1rem;
+    display: inline-block;
+    font-size: .69rem;
+    font-weight: 650;
+    padding: .2rem .45rem;
+    white-space: nowrap;
+  }
+
+  .am-freshness-status-urgent {
+    background: var(--am-red-bg);
+    color: var(--am-red);
+  }
+
+  .am-freshness-status-overdue,
+  .am-freshness-status-due {
+    background: var(--am-amber-bg);
+    color: var(--am-amber);
+  }
+
+  .am-freshness-status-current {
+    background: var(--am-green-bg);
+    color: var(--am-green);
+  }
+
+  .am-ratio {
+    color: var(--am-muted);
+    display: block;
+    font-size: .65rem;
+    margin-top: .2rem;
+  }
+
+  .am-muted {
+    color: var(--am-muted);
+  }
+
+  .am-missing-guidance {
+    border-top: 1px solid var(--am-line);
+  }
+
+  .am-missing-guidance > summary {
+    cursor: pointer;
+    font-size: .78rem;
+    font-weight: 650;
+    padding: .85rem 1.1rem;
+  }
+
+  .am-missing-guidance > summary span {
+    background: var(--am-faint);
+    border-radius: 1rem;
+    font-size: .68rem;
+    margin-left: .25rem;
+    padding: .1rem .35rem;
+  }
+
+  .am-missing-guidance > p {
+    color: var(--am-muted);
+    font-size: .75rem;
+    margin: -.3rem 1.1rem .8rem;
+  }
+
+  .am-guidance-table {
+    border-top: 1px solid var(--am-line);
+  }
+
+  .am-panel {
+    border: 1px solid var(--am-line);
+    border-radius: .65rem;
+    min-width: 0;
+  }
+
+  .am-tree-panel {
+    max-height: calc(100vh - 14rem);
+    min-height: 28rem;
+    overflow: auto;
+    padding: .4rem;
+  }
+
+  .am-tree,
+  .am-tree ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .am-tree ul {
+    border-left: 1px solid var(--am-line);
+    margin-left: .72rem;
+    padding-left: .62rem;
+  }
+
+  .am-node summary,
+  .am-leaf > button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: .35rem;
+    color: inherit;
+    cursor: pointer;
+    display: flex;
+    font: inherit;
+    gap: .35rem;
+    min-height: 2rem;
+    padding: .27rem .4rem;
+    text-align: left;
+    width: 100%;
+  }
+
+  .am-node summary {
+    list-style: none;
+  }
+
+  .am-node summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .am-node summary::before {
+    content: none !important;
+    display: none !important;
+  }
+
+  .am-node summary::marker {
+    content: "";
+  }
+
+  .am-node summary:hover,
+  .am-leaf > button:hover,
+  .am-node summary.is-selected,
+  .am-leaf > button.is-selected {
+    background: var(--am-faint);
+  }
+
+  .am-node summary.is-selected,
+  .am-leaf > button.is-selected {
+    box-shadow: inset 2px 0 0 var(--am-blue);
+  }
+
+  .am-caret {
+    border-bottom: .28rem solid transparent;
+    border-left: .38rem solid var(--am-muted);
+    border-top: .28rem solid transparent;
+    flex: 0 0 auto;
+    transform: rotate(0deg);
+    transition: transform .12s ease;
+  }
+
+  details[open] > summary .am-caret {
+    transform: rotate(90deg);
+  }
+
+  .am-node-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .am-node-name small {
+    color: var(--am-muted);
+    display: block;
+    font-size: .68rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .am-node-count,
+  .am-node-alert,
+  .am-state {
+    border-radius: 1rem;
+    flex: 0 0 auto;
+    font-size: .66rem;
+    line-height: 1.3;
+    padding: .1rem .35rem;
+  }
+
+  .am-node-count,
+  .am-state {
+    background: var(--am-faint);
+    color: var(--am-muted);
+  }
+
+  .am-node-alert,
+  .am-state-review {
+    background: var(--am-red-bg);
+    color: var(--am-red);
+  }
+
+  .am-state-backfill {
+    background: var(--am-blue-bg);
+    color: var(--am-blue);
+  }
+
+  .am-detail {
+    min-height: 28rem;
+    padding: 1rem 1.1rem 1.2rem;
+    position: sticky;
+    top: .75rem;
+  }
+
+  .am-detail-header {
+    align-items: start;
+    display: flex;
+    gap: .75rem;
+    justify-content: space-between;
+  }
+
+  .am-detail h3 {
+    font-size: 1.15rem;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .am-detail-link {
+    flex: 0 0 auto;
+    font-size: .75rem;
+  }
+
+  .am-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .3rem;
+    margin-top: .6rem;
+  }
+
+  .am-badge {
+    background: var(--am-faint);
+    border-radius: 1rem;
+    color: var(--am-muted);
+    font-size: .7rem;
+    padding: .2rem .45rem;
+  }
+
+  .am-badge-review {
+    background: var(--am-red-bg);
+    color: var(--am-red);
+  }
+
+  .am-metrics {
+    display: grid;
+    gap: .45rem;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: .9rem 0;
+  }
+
+  .am-metric {
+    background: var(--am-faint);
+    border-radius: .45rem;
+    min-width: 0;
+    padding: .55rem .6rem;
+  }
+
+  .am-metric-label,
+  .am-kv dt {
+    color: var(--am-muted);
+    font-size: .67rem;
+    margin: 0 0 .15rem;
+  }
+
+  .am-metric-value {
+    font-size: .88rem;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+  }
+
+  .am-detail-section {
+    border-top: 1px solid var(--am-line);
+    margin-top: .8rem;
+    padding-top: .75rem;
+  }
+
+  .am-detail-section h4 {
+    font-size: .78rem;
+    letter-spacing: .025em;
+    margin: 0 0 .5rem;
+    text-transform: uppercase;
+  }
+
+  .am-kv {
+    display: grid;
+    gap: .45rem .8rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: 0;
+  }
+
+  .am-kv div {
+    min-width: 0;
+  }
+
+  .am-kv dd {
+    font-size: .8rem;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .am-table {
+    border-collapse: collapse;
+    font-size: .76rem;
+    width: 100%;
+  }
+
+  .am-table th,
+  .am-table td {
+    border-bottom: 1px solid var(--am-line);
+    padding: .35rem .25rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .am-table th {
+    color: var(--am-muted);
+    font-size: .67rem;
+    font-weight: 600;
+  }
+
+  .am-status-current { color: var(--am-green); }
+  .am-status-overdue,
+  .am-status-missing { color: var(--am-red); }
+
+  .am-list,
+  .am-timeline {
+    font-size: .8rem;
+    margin: 0;
+    padding-left: 1.1rem;
+  }
+
+  .am-list li,
+  .am-timeline li {
+    margin: .25rem 0;
+  }
+
+  .am-empty,
+  .am-detail-placeholder {
+    padding: 1rem;
+  }
+
+  @media (max-width: 900px) {
+    .am-header { align-items: start; flex-direction: column; gap: .75rem; }
+    .am-summary { justify-content: start; }
+    .am-balance-header { align-items: start; flex-direction: column; gap: .75rem; }
+    .am-workspace { grid-template-columns: 1fr; }
+    .am-tree-panel { max-height: 45vh; min-height: 16rem; }
+    .am-detail { min-height: 18rem; position: static; }
+  }
+
+  @media (max-width: 560px) {
+    .am-metrics,
+    .am-kv { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+</style>

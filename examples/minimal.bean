@@ -1,0 +1,36 @@
+option "title" "Account Maintenance Example"
+option "operating_currency" "USD"
+
+2000-01-01 custom "fava-extension" "fava_account_maintenance"
+
+2020-01-01 open Assets:Household:Checking:Example USD
+  balance_frequency: 30
+  nickname: "Daily checking"
+  purpose: "Synthetic example account"
+
+2020-01-01 open Assets:Household:Buffer:Transfers USD
+  maintenance_buffer: TRUE
+
+2020-01-01 open Liabilities:Household:CreditCard:Example USD
+  balance_frequency: 30
+
+2020-01-01 open Equity:Opening-Balances
+  maintenance_role: "opening_history"
+
+2020-01-01 open Expenses:Household:Groceries USD
+
+2020-01-01 pad Assets:Household:Checking:Example Equity:Opening-Balances
+
+2020-01-02 balance Assets:Household:Checking:Example 1000.00 USD
+
+2024-01-15 * "Example Market" "Synthetic purchase"
+  Assets:Household:Checking:Example  -20.00 USD
+  Expenses:Household:Groceries       20.00 USD
+
+2024-02-01 balance Assets:Household:Checking:Example 980.00 USD
+
+2024-03-01 * "Example Store" "Synthetic card purchase"
+  Liabilities:Household:CreditCard:Example  -50.00 USD
+  Expenses:Household:Groceries               50.00 USD
+
+2024-03-02 balance Liabilities:Household:CreditCard:Example -50.00 USD

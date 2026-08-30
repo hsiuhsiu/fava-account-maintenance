@@ -1,0 +1,32 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: python -m pip install -e ".[dev]"
+      - run: ruff check .
+      - run: pytest
+      - run: python -m build
+      - name: Verify built wheel resources
+        run: |
+          python -m pip install --force-reinstall --no-deps dist/*.whl
+          python - <<'PY'
+          from importlib.resources import files
+
+          package = files("fava_account_maintenance")
+          assert package.joinpath("UpdateGuidance.js").is_file()
+          assert package.joinpath("templates", "UpdateGuidance.html").is_file()
+          PY
