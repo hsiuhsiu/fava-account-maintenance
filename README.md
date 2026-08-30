@@ -25,7 +25,7 @@ The extension does not edit the ledger and does not make network requests.
 
 ## Compatibility
 
-Version 0.1.0 is tested with Fava 1.30.12, Beancount 3.2, and Python 3.12.
+Version 0.1.1 is tested with Fava 1.30.12, Beancount 3.2, and Python 3.12.
 The dependency is intentionally limited to Fava 1.30.x until newer versions are
 tested. Fava describes its extension API as unstable, so test upgrades before
 deploying them to a production ledger.
@@ -35,21 +35,26 @@ deploying them to a production ledger.
 Install the package into the same Python environment that runs Fava:
 
 ```sh
+python -m pip install fava-account-maintenance
+```
+
+If Fava was installed with `pipx`, inject the extension into that environment:
+
+```sh
+pipx inject fava fava-account-maintenance
+```
+
+To install a tagged GitHub version directly:
+
+```sh
 python -m pip install \
-  "git+https://github.com/hsiuhsiu/fava-account-maintenance.git@v0.1.0"
+  "git+https://github.com/hsiuhsiu/fava-account-maintenance.git@v0.1.1"
 ```
 
 For a local checkout:
 
 ```sh
 python -m pip install ./fava-account-maintenance
-```
-
-If Fava was installed with `pipx`, inject the extension into that environment:
-
-```sh
-pipx inject fava \
-  "git+https://github.com/hsiuhsiu/fava-account-maintenance.git@v0.1.0"
 ```
 
 Then enable the extension in the main Beancount file:
