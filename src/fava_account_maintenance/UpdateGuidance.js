@@ -13,17 +13,6 @@ const ACTIVITY = {
   future: "尚未開始",
 };
 
-const BALANCE = {
-  current: "核對正常",
-  overdue: "核對逾期",
-  partial: "部分幣別缺漏",
-  never: "從未核對",
-  unset: "未設定核對週期",
-  invalid_frequency: "核對週期設定無效",
-  closed: "已關閉",
-  not_applicable: "不適用",
-};
-
 const HISTORY = {
   explicit_zero: "明確從零開始",
   opening_pad: "以期初 Pad 匯入",
@@ -68,10 +57,6 @@ const REASON = {
   never_used: "帳戶已開立但從未使用",
   dormant_zero: "長期未用且目前為零，可確認是否應關戶",
   dormant_nonzero: "長期未用但仍有餘額",
-  balance_invalid_frequency: "balance_frequency 設定無效",
-  balance_never: "有核對週期但從未做 Balance assertion",
-  balance_overdue: "Balance assertion 已逾期",
-  balance_partial: "部分應維護的幣別沒有 Balance assertion",
   buffer_nonzero: "預期歸零的 Buffer 目前仍有餘額",
   pad_gap: "Pad 不只出現在單一、乾淨的期初位置",
   equity_recent_usage: "歷史／不明來源 Equity 最近仍被使用",
@@ -235,7 +220,6 @@ function renderAccount(detail, row) {
     ["目前原生餘額", row.inventory_text],
     ["活動狀態", ACTIVITY[row.activity_status] || row.activity_status],
     ["最近活動", daysText(row.last_activity, row.days_inactive)],
-    ["餘額核對", BALANCE[row.balance_status] || row.balance_status],
   ]);
 
   const state = addSection(detail, "帳戶狀態");
@@ -247,30 +231,6 @@ function renderAccount(detail, row) {
     ["第一筆活動", row.first_activity],
     ["閒置天數", row.days_inactive],
   ]);
-
-  const balance = addSection(detail, "Balance assertions");
-  addKeyValues(balance, [
-    ["整體狀態", BALANCE[row.balance_status] || row.balance_status],
-    ["預期週期", row.balance_frequency ? `${row.balance_frequency} 天` : "未設定"],
-  ]);
-  if (row.balance_units.length) {
-    addTable(
-      balance,
-      ["幣別", "最近日期", "日數", "asserted", "狀態"],
-      row.balance_units.map((unit) => [
-        unit.currency,
-        unit.date,
-        unit.days_since,
-        unit.amount,
-        {
-          text: unit.status === "current" ? "正常" : unit.status === "overdue" ? "逾期" : "缺少",
-          className: `am-status-${unit.status}`,
-        },
-      ]),
-    );
-  } else {
-    balance.append(element("p", "am-detail-subtitle", "沒有適用的逐幣別 Balance 資料。"));
-  }
 
   const history = addSection(detail, "歷史起點與 Pad");
   addKeyValues(history, [
@@ -404,13 +364,6 @@ function initAccountMaintenance(
     for (const button of root.querySelectorAll("[data-am-filter]")) {
       button.setAttribute("aria-pressed", String(button.dataset.amFilter === mode));
     }
-
-    const treeView = root.querySelector("[data-am-tree-view]");
-    const balanceView = root.querySelector("[data-am-balance-view]");
-    const balanceMode = mode === "balance";
-    if (treeView) treeView.hidden = balanceMode;
-    if (balanceView) balanceView.hidden = !balanceMode;
-    if (balanceMode) return;
 
     for (const node of root.querySelectorAll("[data-am-node]")) {
       node.hidden = !node.dataset.amModes.split(/\s+/).includes(mode);

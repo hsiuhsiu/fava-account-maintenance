@@ -4,7 +4,6 @@ option "operating_currency" "USD"
 2000-01-01 custom "fava-extension" "fava_account_maintenance"
 
 2020-01-01 open Assets:Household:Checking:Example USD
-  balance_frequency: 30
   nickname: "Daily checking"
   purpose: "Synthetic example account"
 
@@ -12,7 +11,6 @@ option "operating_currency" "USD"
   maintenance_buffer: TRUE
 
 2020-01-01 open Liabilities:Household:CreditCard:Example USD
-  balance_frequency: 30
 
 2020-01-01 open Equity:Opening-Balances
   maintenance_role: "opening_history"

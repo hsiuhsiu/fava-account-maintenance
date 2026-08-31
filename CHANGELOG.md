@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0 - 2026-08-30
+
+- Keep the public package focused on reusable account-audit views.
+- Remove the ledger-specific `balance_frequency` policy and Balance 更新 queue.
+- Open the account-tree overview by default.
+
 ## 0.1.1 - 2026-08-30
 
 - Publish the package through PyPI for a one-command installation.

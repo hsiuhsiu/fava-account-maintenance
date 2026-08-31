@@ -2,8 +2,8 @@
 
 Fava Account Maintenance is a read-only Fava extension for understanding a
 large Beancount chart of accounts. It combines an account tree with operational
-views for balance freshness, dormant or unused accounts, account lifecycle,
-historical boundaries, Pad usage, and temporary buffer accounts.
+views for dormant or unused accounts, account lifecycle, historical boundaries,
+Pad usage, and temporary buffer accounts.
 
 The report UI is currently written in Traditional Chinese. The source and the
 example ledger contain only synthetic account names and amounts.
@@ -12,9 +12,6 @@ example ledger contain only synthetic account names and amounts.
 
 - A collapsible tree built from the ledger's Assets, Liabilities, and Equity
   roots.
-- A default **Balance 更新** queue: never-balanced accounts first, then partial
-  multi-commodity balances, overdue accounts, and accounts nearest their due
-  date.
 - Open, closed, future, unused, dormant-zero, and dormant-nonzero accounts.
 - Whether an account explicitly started at zero, was seeded from Equity, or
   began with Pad.
@@ -25,7 +22,7 @@ The extension does not edit the ledger and does not make network requests.
 
 ## Compatibility
 
-Version 0.1.1 is tested with Fava 1.30.12, Beancount 3.2, and Python 3.12.
+Version 0.2.0 is tested with Fava 1.30.12, Beancount 3.2, and Python 3.12.
 The dependency is intentionally limited to Fava 1.30.x until newer versions are
 tested. Fava describes its extension API as unstable, so test upgrades before
 deploying them to a production ledger.
@@ -48,7 +45,7 @@ To install a tagged GitHub version directly:
 
 ```sh
 python -m pip install \
-  "git+https://github.com/hsiuhsiu/fava-account-maintenance.git@v0.1.1"
+  "git+https://github.com/hsiuhsiu/fava-account-maintenance.git@v0.2.0"
 ```
 
 For a local checkout:
@@ -88,11 +85,8 @@ can instead install a tagged release during its build.
 
 ## Ledger metadata
 
-Balance freshness is opt-in per account. The value is a number of days:
-
 ```beancount
 2020-01-01 open Assets:Household:Checking:Example USD
-  balance_frequency: 30
   nickname: "Daily checking"
   purpose: "Household cash flow"
 ```
@@ -101,7 +95,6 @@ Supported `open` metadata:
 
 | Key | Meaning |
 | --- | --- |
-| `balance_frequency` | Expected number of days between Balance assertions. |
 | `nickname` | Short label displayed beside the full account name. |
 | `purpose` | Reminder of why the account exists. |
 | `maintenance_kind` | Overrides the account-kind component for this account. |
