@@ -13,6 +13,9 @@ example ledger contain only synthetic account names and amounts.
 - A collapsible tree built from the ledger's Assets, Liabilities, and Equity
   roots.
 - Open, closed, future, unused, dormant-zero, and dormant-nonzero accounts.
+- Activity includes ordinary transaction postings and Balance assertions.
+  Future-dated Balance assertions count as maintenance activity without changing
+  the report's as-of inventory or price calculations.
 - Whether an account explicitly started at zero, was seeded from Equity, or
   began with Pad.
 - Late or repeated Pad directives that may indicate a historical gap.

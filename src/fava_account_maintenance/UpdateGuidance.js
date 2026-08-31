@@ -19,17 +19,17 @@ const HISTORY = {
   late_pad: "帳內期間仍有 Pad",
   equity_seeded: "由 Equity 建立起始值",
   implicit_zero: "從 Open 隱含為零",
-  unused: "尚無交易歷史",
+  unused: "尚無活動歷史",
   equity_role: "Equity 功能帳戶",
 };
 
 const HISTORY_NOTE = {
-  explicit_zero: "首筆一般活動前，相關幣別已有零額 Balance assertion。",
+  explicit_zero: "第一筆活動當時或之前，相關幣別已有零額 Balance assertion。",
   opening_pad: "起點以 Pad 帶入；若要向前追溯，可逐步用更早的真實交易取代。",
-  late_pad: "一般活動開始後仍出現 Pad，代表帳內期間可能有缺口，宜優先查看。",
-  equity_seeded: "第一筆一般活動直接由 Equity 建立餘額；起點在帳內，但外部歷史未獲證實。",
+  late_pad: "活動開始後仍出現 Pad，代表帳內期間可能有缺口，宜優先查看。",
+  equity_seeded: "第一筆 transaction 活動直接由 Equity 建立餘額；起點在帳內，但外部歷史未獲證實。",
   implicit_zero: "Beancount 從 Open 隱含以零開始，但沒有外部零額 Balance 證明。",
-  unused: "帳戶已 Open，但尚無一般 transaction posting。",
+  unused: "帳戶已 Open，但尚無一般 transaction posting 或 Balance assertion。",
   equity_role: "此帳戶用來承接帳本模型或歷史邊界，不套用一般帳戶的起點判定。",
 };
 
@@ -65,9 +65,9 @@ const REASON = {
 const EVENT = {
   open: "Open",
   close: "Close",
-  first_activity: "第一筆一般活動",
+  first_activity: "第一筆活動",
   last_zero: "最近一次歸零",
-  last_activity: "最近一般活動",
+  last_activity: "最近活動",
 };
 
 const ACCOUNT_MAINTENANCE_STATE = new WeakMap();
@@ -227,7 +227,7 @@ function renderAccount(detail, row) {
     ["類型", row.kind],
     ["Open", row.open_date],
     ["Close", row.close_date],
-    ["一般 postings", row.activity_count],
+    ["活動筆數", row.activity_count],
     ["第一筆活動", row.first_activity],
     ["閒置天數", row.days_inactive],
   ]);

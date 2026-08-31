@@ -280,7 +280,9 @@ def build_account_maintenance(
 
     The input must be the fully loaded entry stream, including plugin-generated
     padding transactions. Generated transactions affect inventory but are not
-    counted as user activity.
+    counted as user activity. Ordinary transaction postings and Balance
+    assertions count as activity. Future-dated Balance assertions count for
+    activity recency only; all other state remains bounded by ``today``.
     """
 
     today = today or dt.date.today()
@@ -371,6 +373,28 @@ def build_account_maintenance(
             last_activity[account] = entry.date
             recent_counterparts[account] = sorted(transaction_accounts - {account})
 
+    # A Balance assertion means the account was deliberately reviewed, so it
+    # refreshes activity even when it is future-dated. Keep this separate from
+    # ``as_of_entries`` so a future assertion does not affect current inventory,
+    # price, or balance-freshness calculations.
+    for entry in all_entries:
+        if not isinstance(entry, data.Balance):
+            continue
+        account = entry.account
+        currency = entry.amount.currency
+        activity_count[account] += 1
+
+        current_first = first_activity.get(account)
+        if current_first is None or entry.date < current_first:
+            first_activity[account] = entry.date
+            first_activity_currencies[account] = {currency}
+        elif entry.date == current_first:
+            first_activity_currencies[account].add(currency)
+
+        current_last = last_activity.get(account)
+        if current_last is None or entry.date > current_last:
+            last_activity[account] = entry.date
+
     balances_by_account: dict[str, dict[str, list[data.Balance]]] = defaultdict(
         lambda: defaultdict(list)
     )
@@ -459,7 +483,7 @@ def build_account_maintenance(
 
         equity_counterparts: list[str] = []
         first_txn = first_transaction.get(account)
-        if first_txn is not None:
+        if first_txn is not None and first_txn.date == first_date:
             equity_counterparts = sorted(
                 {
                     posting.account
@@ -485,7 +509,9 @@ def build_account_maintenance(
             history_boundary = "implicit_zero"
 
         days_inactive = (
-            (today - last_activity[account]).days if account in last_activity else None
+            max((today - last_activity[account]).days, 0)
+            if account in last_activity
+            else None
         )
         if lifecycle == "closed":
             activity_status = "closed"

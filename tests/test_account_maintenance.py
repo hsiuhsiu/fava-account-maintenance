@@ -186,6 +186,48 @@ class AccountMaintenanceModelTest(unittest.TestCase):
         self.assertEqual(row["activity_status"], "dormant_zero")
         self.assertIn("dormant_zero", row["reasons"])
 
+    def test_recent_balance_assertion_counts_as_activity(self):
+        account = "Assets:Household:Checking:Maintained"
+        entries = [
+            open_account(dt.date(2020, 1, 1), account),
+            transaction(
+                dt.date(2020, 1, 2),
+                [(account, 10, "USD"), ("Equity:Opening-Balances", -10, "USD")],
+            ),
+            balance(dt.date(2026, 8, 20), account, 10),
+        ]
+
+        row = model(entries)["node_data"][f"account:{account}"]
+
+        self.assertEqual(row["activity_status"], "active")
+        self.assertEqual(row["last_activity"], "2026-08-20")
+        self.assertEqual(row["days_inactive"], 8)
+        self.assertEqual(row["activity_count"], 2)
+        self.assertNotIn("dormant_nonzero", row["reasons"])
+
+    def test_future_balance_assertion_counts_as_current_activity(self):
+        account = "Liabilities:Household:CreditCard:Maintained"
+        entries = [
+            open_account(dt.date(2020, 1, 1), account),
+            transaction(
+                dt.date(2020, 1, 2),
+                [(account, -1, "USD"), ("Expenses:Ignored", 1, "USD")],
+            ),
+            transaction(
+                dt.date(2020, 1, 3),
+                [(account, 1, "USD"), ("Assets:Ignored", -1, "USD")],
+            ),
+            balance(dt.date(2026, 9, 30), account, 0),
+        ]
+
+        row = model(entries)["node_data"][f"account:{account}"]
+
+        self.assertEqual(row["activity_status"], "active")
+        self.assertEqual(row["last_activity"], "2026-09-30")
+        self.assertEqual(row["days_inactive"], 0)
+        self.assertEqual(row["activity_count"], 3)
+        self.assertNotIn("dormant_zero", row["reasons"])
+
     def test_future_account_is_visible_but_not_needing_review(self):
         account = "Assets:Household:Checking:Future"
         result = model([open_account(dt.date(2027, 1, 1), account)])
