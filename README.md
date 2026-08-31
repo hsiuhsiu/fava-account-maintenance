@@ -1,4 +1,9 @@
-# Fava Account Maintenance
+# Fava Account Maintenance — personal branch
+
+This branch keeps a ledger-specific **Balance 更新** workflow based on the
+custom `balance_frequency` metadata. The reusable public package is maintained
+on [`main`](https://github.com/hsiuhsiu/fava-account-maintenance/tree/main) and
+published to PyPI without that workflow.
 
 Fava Account Maintenance is a read-only Fava extension for understanding a
 large Beancount chart of accounts. It combines an account tree with operational
@@ -25,30 +30,32 @@ The extension does not edit the ledger and does not make network requests.
 
 ## Compatibility
 
-Version 0.1.1 is tested with Fava 1.30.12, Beancount 3.2, and Python 3.12.
+Version 0.2.0+personal.1 is tested with Fava 1.30.12, Beancount 3.2, and Python
+3.12.
 The dependency is intentionally limited to Fava 1.30.x until newer versions are
 tested. Fava describes its extension API as unstable, so test upgrades before
 deploying them to a production ledger.
 
 ## Install
 
-Install the package into the same Python environment that runs Fava:
+Install this branch into the same Python environment that runs Fava:
 
 ```sh
-python -m pip install fava-account-maintenance
+python -m pip install --upgrade --force-reinstall \
+  "fava-account-maintenance @ git+https://github.com/hsiuhsiu/fava-account-maintenance.git@personal"
 ```
 
 If Fava was installed with `pipx`, inject the extension into that environment:
 
 ```sh
-pipx inject fava fava-account-maintenance
+pipx inject --force fava \
+  "fava-account-maintenance @ git+https://github.com/hsiuhsiu/fava-account-maintenance.git@personal"
 ```
 
-To install a tagged GitHub version directly:
+To install the reusable public version instead:
 
 ```sh
-python -m pip install \
-  "git+https://github.com/hsiuhsiu/fava-account-maintenance.git@v0.1.1"
+python -m pip install fava-account-maintenance
 ```
 
 For a local checkout:

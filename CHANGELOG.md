@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0+personal.1 - 2026-08-30
+
+- Preserve the ledger-specific Balance 更新 queue on the `personal` branch.
+- Install this variant directly from GitHub rather than PyPI.
+
 ## 0.1.1 - 2026-08-30
 
 - Publish the package through PyPI for a one-command installation.
