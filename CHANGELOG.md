@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1 - 2026-08-31
+
+- Count Balance assertions as account activity for dormant-account detection.
+- Let future-dated Balance assertions refresh activity without changing the
+  report's as-of inventory, price, or balance-freshness calculations.
+- Clamp inactivity to zero when the latest activity is future-dated.
+
 ## 0.2.0 - 2026-08-30
 
 - Keep the public package focused on reusable account-audit views.

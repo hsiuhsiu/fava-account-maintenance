@@ -25,7 +25,7 @@ The extension does not edit the ledger and does not make network requests.
 
 ## Compatibility
 
-Version 0.2.0 is tested with Fava 1.30.12, Beancount 3.2, and Python 3.12.
+Version 0.2.1 is tested with Fava 1.30.12, Beancount 3.2, and Python 3.12.
 The dependency is intentionally limited to Fava 1.30.x until newer versions are
 tested. Fava describes its extension API as unstable, so test upgrades before
 deploying them to a production ledger.
@@ -48,7 +48,7 @@ To install a tagged GitHub version directly:
 
 ```sh
 python -m pip install \
-  "git+https://github.com/hsiuhsiu/fava-account-maintenance.git@v0.2.0"
+  "git+https://github.com/hsiuhsiu/fava-account-maintenance.git@v0.2.1"
 ```
 
 For a local checkout:

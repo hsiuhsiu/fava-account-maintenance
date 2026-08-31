@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fava-account-maintenance"
-version = "0.2.0"
+version = "0.2.1"
 description = "A Fava extension for auditing Beancount account lifecycle and history boundaries."
 readme = "README.md"
 requires-python = ">=3.10"
