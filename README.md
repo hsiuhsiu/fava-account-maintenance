@@ -33,7 +33,7 @@ The extension does not edit the ledger and does not make network requests.
 
 ## Compatibility
 
-Version 0.2.0+personal.1 is tested with Fava 1.30.12, Beancount 3.2, and Python
+Version 0.2.1+personal.1 is tested with Fava 1.30.12, Beancount 3.2, and Python
 3.12.
 The dependency is intentionally limited to Fava 1.30.x until newer versions are
 tested. Fava describes its extension API as unstable, so test upgrades before

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1+personal.1 - 2026-08-31
+
+- Count Balance assertions, including future-dated assertions, as account
+  activity for dormant-account detection.
+- Keep future Balance assertions out of current balance-freshness calculations.
+
 ## 0.2.0+personal.1 - 2026-08-30
 
 - Preserve the ledger-specific Balance 更新 queue on the `personal` branch.
