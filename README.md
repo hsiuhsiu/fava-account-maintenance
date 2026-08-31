@@ -1,9 +1,14 @@
-# Fava Account Maintenance
+# Fava Account Maintenance — personal branch
+
+This branch keeps a ledger-specific **Balance 更新** workflow based on the
+custom `balance_frequency` metadata. The reusable public package is maintained
+on [`main`](https://github.com/hsiuhsiu/fava-account-maintenance/tree/main) and
+published to PyPI without that workflow.
 
 Fava Account Maintenance is a read-only Fava extension for understanding a
 large Beancount chart of accounts. It combines an account tree with operational
-views for dormant or unused accounts, account lifecycle, historical boundaries,
-Pad usage, and temporary buffer accounts.
+views for balance freshness, dormant or unused accounts, account lifecycle,
+historical boundaries, Pad usage, and temporary buffer accounts.
 
 The report UI is currently written in Traditional Chinese. The source and the
 example ledger contain only synthetic account names and amounts.
@@ -12,6 +17,9 @@ example ledger contain only synthetic account names and amounts.
 
 - A collapsible tree built from the ledger's Assets, Liabilities, and Equity
   roots.
+- A default **Balance 更新** queue: never-balanced accounts first, then partial
+  multi-commodity balances, overdue accounts, and accounts nearest their due
+  date.
 - Open, closed, future, unused, dormant-zero, and dormant-nonzero accounts.
 - Activity includes ordinary transaction postings and Balance assertions.
   Future-dated Balance assertions count as maintenance activity without changing
@@ -25,30 +33,35 @@ The extension does not edit the ledger and does not make network requests.
 
 ## Compatibility
 
-Version 0.2.1 is tested with Fava 1.30.12, Beancount 3.2, and Python 3.12.
+Version 0.2.1+personal.1 is tested with Fava 1.30.12, Beancount 3.2, and Python
+3.12.
 The dependency is intentionally limited to Fava 1.30.x until newer versions are
 tested. Fava describes its extension API as unstable, so test upgrades before
 deploying them to a production ledger.
 
 ## Install
 
-Install the package into the same Python environment that runs Fava:
+Install this branch into the same Python environment that runs Fava:
 
 ```sh
-python -m pip install fava-account-maintenance
+python -m pip install --upgrade --force-reinstall \
+  "fava-account-maintenance @ git+https://github.com/hsiuhsiu/fava-account-maintenance.git@personal"
 ```
+
+For a reproducible server deployment, replace `personal` with the exact commit
+hash currently at the tip of that branch.
 
 If Fava was installed with `pipx`, inject the extension into that environment:
 
 ```sh
-pipx inject fava fava-account-maintenance
+pipx inject --force fava \
+  "fava-account-maintenance @ git+https://github.com/hsiuhsiu/fava-account-maintenance.git@personal"
 ```
 
-To install a tagged GitHub version directly:
+To install the reusable public version instead:
 
 ```sh
-python -m pip install \
-  "git+https://github.com/hsiuhsiu/fava-account-maintenance.git@v0.2.1"
+python -m pip install fava-account-maintenance
 ```
 
 For a local checkout:
@@ -88,8 +101,11 @@ can instead install a tagged release during its build.
 
 ## Ledger metadata
 
+Balance freshness is opt-in per account. The value is a number of days:
+
 ```beancount
 2020-01-01 open Assets:Household:Checking:Example USD
+  balance_frequency: 30
   nickname: "Daily checking"
   purpose: "Household cash flow"
 ```
@@ -98,6 +114,7 @@ Supported `open` metadata:
 
 | Key | Meaning |
 | --- | --- |
+| `balance_frequency` | Expected number of days between Balance assertions. |
 | `nickname` | Short label displayed beside the full account name. |
 | `purpose` | Reminder of why the account exists. |
 | `maintenance_kind` | Overrides the account-kind component for this account. |
@@ -161,6 +178,22 @@ paths outside `source_root` fall back to their basename.
 These settings control this extension's model only; Fava itself may expose
 ledger filenames in its standard page data, which is another reason the Fava
 instance must remain private.
+
+## Branch maintenance
+
+`main` is the public branch and the only source of PyPI releases. `personal` is
+a small private-use overlay that keeps the Balance 更新 workflow. After each
+public release:
+
+1. Rebase `personal` onto the released `main` commit.
+2. Resolve only the personal Balance-workflow differences and bump the local
+   version to `<public-version>+personal.<revision>`.
+3. Run lint, tests, and a package build, then update `personal` with
+   `--force-with-lease`.
+4. Pin deployments to the resulting exact personal commit.
+
+Do not create a `v*` release tag from `personal` or publish its local-version
+build to PyPI.
 
 ## Development
 
