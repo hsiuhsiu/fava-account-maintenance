@@ -43,12 +43,12 @@
 {% endmacro %}
 
 <section id="account-maintenance-root" class="am-page"
-         data-account-maintenance data-am-default-view="all">
+         data-account-maintenance data-am-default-view="balance">
   <div class="am-header">
     <div>
       <p class="am-eyebrow">截至 {{ d.today }}</p>
       <h2>Account Maintenance</h2>
-      <p class="am-intro">從帳戶樹查看生命週期、歷史起點、Pad 與 buffer 狀況。</p>
+      <p class="am-intro">從帳戶樹查看生命週期、餘額核對、歷史起點、Pad 與 buffer 狀況。</p>
     </div>
     <div class="am-summary" aria-label="帳戶摘要">
       <span><strong>{{ d.summary.open }}</strong> 開啟</span>
@@ -60,8 +60,12 @@
   </div>
 
   <nav class="am-filters" aria-label="帳戶維護視圖">
-    <button type="button" data-am-filter="all" aria-pressed="true">
+    <button type="button" data-am-filter="all" aria-pressed="false">
       全部 <span>{{ d.summary.total }}</span>
+    </button>
+    <button type="button" data-am-filter="balance" aria-pressed="true"
+            title="{{ d.summary.balance_due }} 個帳戶目前需要更新；共追蹤 {{ d.summary.balance_tracked }} 個">
+      Balance 更新 <span>{{ d.summary.balance_due }}</span>
     </button>
     <button type="button" data-am-filter="needs" aria-pressed="false">
       需要查看 <span>{{ d.summary.needs_review }}</span>
@@ -74,7 +78,136 @@
     </button>
   </nav>
 
-  <div class="am-workspace" data-am-tree-view>
+  <section class="am-panel am-balance-view" data-am-balance-view>
+    <div class="am-balance-header">
+      <div>
+        <p class="am-eyebrow">Balance Freshness</p>
+        <h3>下一個該核對的帳戶</h3>
+        <p>從未核對與缺漏幣別優先，其次是逾期天數最多；尚未逾期則按最接近期限排列。</p>
+      </div>
+      <div class="am-balance-totals" aria-label="Balance 更新摘要">
+        <strong>{{ d.summary.balance_due }}</strong> 待更新
+        <span>／ {{ d.summary.balance_tracked }} 個有設定週期</span>
+      </div>
+    </div>
+
+    {% if d.balance_queue %}
+      <div class="am-table-scroll">
+        <table class="am-freshness-table">
+          <thead>
+            <tr>
+              <th>Account</th>
+              <th>週期</th>
+              <th>各幣別最後 Balance</th>
+              <th>已過</th>
+              <th>狀態</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in d.balance_queue %}
+              <tr class="am-freshness-row am-freshness-{{ r.status }}">
+                <td class="am-freshness-account">
+                  <a href="{{ url_for('account', name=r.account) }}">{{ r.account }}</a>
+                  {% if r.nickname %}<small>{{ r.nickname }}</small>{% endif %}
+                </td>
+                <td>{{ r.frequency }} 天</td>
+                <td>
+                  {% if r.units %}
+                    <div class="am-unit-list">
+                      {% for unit in r.units %}
+                        <span class="am-unit am-unit-{{ unit.status }}">
+                          <strong>{{ unit.currency }}</strong>
+                          {% if unit.date %}
+                            {{ unit.date }}
+                          {% else %}
+                            尚未核對
+                          {% endif %}
+                        </span>
+                      {% endfor %}
+                    </div>
+                  {% else %}
+                    <span class="am-muted">尚未有可判定的幣別</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {{ r.days_since if r.days_since is not none else '—' }}
+                  {% if r.days_since is not none %}天{% endif %}
+                </td>
+                <td>
+                  {% if r.status == 'never' %}
+                    <span class="am-freshness-status am-freshness-status-urgent">從未核對</span>
+                  {% elif r.status == 'partial' %}
+                    <span class="am-freshness-status am-freshness-status-urgent">
+                      缺少 {{ r.missing_units|join('、') }}
+                    </span>
+                  {% elif r.status == 'overdue' %}
+                    <span class="am-freshness-status am-freshness-status-overdue">逾期 {{ r.delta }} 天</span>
+                  {% elif r.delta == 0 %}
+                    <span class="am-freshness-status am-freshness-status-due">今天到期</span>
+                  {% else %}
+                    <span class="am-freshness-status am-freshness-status-current">
+                      {{ 0 - r.delta }} 天後到期
+                    </span>
+                  {% endif %}
+                  {% if r.status_ratio is not none %}
+                    <small class="am-ratio">{{ '%.1f'|format(r.status_ratio) }}× 週期</small>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="am-empty">目前沒有設定有效 <code>balance_frequency</code> 的開啟帳戶。</p>
+    {% endif %}
+
+    {% if d.missing_guidance %}
+      <details class="am-missing-guidance">
+        <summary>
+          未設定核對週期
+          <span>{{ d.summary.balance_missing_frequency }}</span>
+        </summary>
+        <p>以下開啟中的 Assets／Liabilities 帳戶沒有有效的 <code>balance_frequency</code>，因此不會進入上方排序。</p>
+        <div class="am-table-scroll">
+          <table class="am-freshness-table am-guidance-table">
+            <thead>
+              <tr>
+                <th>Account</th>
+                <th>最後 Balance</th>
+                <th>已過</th>
+                <th>設定</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in d.missing_guidance %}
+                <tr>
+                  <td class="am-freshness-account">
+                    <a href="{{ url_for('account', name=r.account) }}">{{ r.account }}</a>
+                    {% if r.nickname %}<small>{{ r.nickname }}</small>{% endif %}
+                  </td>
+                  <td>{{ r.last_balance or '—' }}</td>
+                  <td>
+                    {{ r.days_since if r.days_since is not none else '—' }}
+                    {% if r.days_since is not none %}天{% endif %}
+                  </td>
+                  <td>
+                    {% if r.invalid %}
+                      <span class="am-freshness-status am-freshness-status-urgent">設定無效</span>
+                    {% else %}
+                      <span class="am-freshness-status">未設定</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    {% endif %}
+  </section>
+
+  <div class="am-workspace" data-am-tree-view hidden>
     <section class="am-panel am-tree-panel" aria-label="帳戶樹">
       {% if d.tree %}
         <ul class="am-tree">
@@ -103,8 +236,12 @@
     --am-muted: color-mix(in srgb, currentColor 62%, transparent);
     --am-blue: light-dark(#1f5f91, #83c6fa);
     --am-blue-bg: light-dark(#eaf4fb, #17364d);
+    --am-amber: light-dark(#855800, #ffd37a);
+    --am-amber-bg: light-dark(#fff3d6, #443313);
     --am-red: light-dark(#9b332d, #ffaaa3);
     --am-red-bg: light-dark(#fdeceb, #4b2524);
+    --am-green: light-dark(#206743, #8bd5ae);
+    --am-green-bg: light-dark(#e9f6ef, #193b2b);
     color: inherit;
     max-width: 1500px;
   }
@@ -203,6 +340,204 @@
     display: grid;
     gap: .8rem;
     grid-template-columns: minmax(280px, .85fr) minmax(420px, 1.45fr);
+  }
+
+  .am-balance-view {
+    overflow: hidden;
+  }
+
+  .am-balance-header {
+    align-items: start;
+    display: flex;
+    gap: 1.5rem;
+    justify-content: space-between;
+    padding: 1rem 1.1rem .85rem;
+  }
+
+  .am-balance-header h3 {
+    font-size: 1.1rem;
+    margin: .08rem 0 .25rem;
+  }
+
+  .am-balance-header p:not(.am-eyebrow) {
+    color: var(--am-muted);
+    font-size: .78rem;
+    margin: 0;
+  }
+
+  .am-balance-totals {
+    background: var(--am-faint);
+    border: 1px solid var(--am-line);
+    border-radius: .55rem;
+    flex: 0 0 auto;
+    font-size: .75rem;
+    padding: .55rem .7rem;
+    white-space: nowrap;
+  }
+
+  .am-balance-totals strong {
+    color: var(--am-red);
+    font-size: 1rem;
+  }
+
+  .am-balance-totals span {
+    color: var(--am-muted);
+  }
+
+  .am-table-scroll {
+    overflow-x: auto;
+  }
+
+  .am-freshness-table {
+    border-collapse: collapse;
+    font-size: .77rem;
+    width: 100%;
+  }
+
+  .am-freshness-table th,
+  .am-freshness-table td {
+    border-top: 1px solid var(--am-line);
+    padding: .62rem .75rem;
+    text-align: left;
+    vertical-align: middle;
+  }
+
+  .am-freshness-table th {
+    background: var(--am-faint);
+    color: var(--am-muted);
+    font-size: .67rem;
+    font-weight: 650;
+    letter-spacing: .02em;
+    white-space: nowrap;
+  }
+
+  .am-freshness-table tbody tr:hover {
+    background: var(--am-faint);
+  }
+
+  .am-freshness-row td:first-child {
+    border-left: 3px solid transparent;
+  }
+
+  .am-freshness-never td:first-child,
+  .am-freshness-partial td:first-child {
+    border-left-color: var(--am-red);
+  }
+
+  .am-freshness-overdue td:first-child {
+    border-left-color: var(--am-amber);
+  }
+
+  .am-freshness-account {
+    min-width: 18rem;
+  }
+
+  .am-freshness-account a {
+    overflow-wrap: anywhere;
+  }
+
+  .am-freshness-account small {
+    color: var(--am-muted);
+    display: block;
+    margin-top: .12rem;
+  }
+
+  .am-unit-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem;
+    min-width: 14rem;
+  }
+
+  .am-unit {
+    background: var(--am-faint);
+    border: 1px solid var(--am-line);
+    border-radius: .35rem;
+    padding: .2rem .35rem;
+    white-space: nowrap;
+  }
+
+  .am-unit strong {
+    font-size: .67rem;
+    margin-right: .2rem;
+  }
+
+  .am-unit-missing {
+    background: var(--am-red-bg);
+    border-color: color-mix(in srgb, var(--am-red) 35%, transparent);
+    color: var(--am-red);
+  }
+
+  .am-unit-overdue {
+    background: var(--am-amber-bg);
+    border-color: color-mix(in srgb, var(--am-amber) 35%, transparent);
+    color: var(--am-amber);
+  }
+
+  .am-freshness-status {
+    background: var(--am-faint);
+    border-radius: 1rem;
+    display: inline-block;
+    font-size: .69rem;
+    font-weight: 650;
+    padding: .2rem .45rem;
+    white-space: nowrap;
+  }
+
+  .am-freshness-status-urgent {
+    background: var(--am-red-bg);
+    color: var(--am-red);
+  }
+
+  .am-freshness-status-overdue,
+  .am-freshness-status-due {
+    background: var(--am-amber-bg);
+    color: var(--am-amber);
+  }
+
+  .am-freshness-status-current {
+    background: var(--am-green-bg);
+    color: var(--am-green);
+  }
+
+  .am-ratio {
+    color: var(--am-muted);
+    display: block;
+    font-size: .65rem;
+    margin-top: .2rem;
+  }
+
+  .am-muted {
+    color: var(--am-muted);
+  }
+
+  .am-missing-guidance {
+    border-top: 1px solid var(--am-line);
+  }
+
+  .am-missing-guidance > summary {
+    cursor: pointer;
+    font-size: .78rem;
+    font-weight: 650;
+    padding: .85rem 1.1rem;
+  }
+
+  .am-missing-guidance > summary span {
+    background: var(--am-faint);
+    border-radius: 1rem;
+    font-size: .68rem;
+    margin-left: .25rem;
+    padding: .1rem .35rem;
+  }
+
+  .am-missing-guidance > p {
+    color: var(--am-muted);
+    font-size: .75rem;
+    margin: -.3rem 1.1rem .8rem;
+  }
+
+  .am-guidance-table {
+    border-top: 1px solid var(--am-line);
   }
 
   .am-panel {
@@ -455,6 +790,10 @@
     font-weight: 600;
   }
 
+  .am-status-current { color: var(--am-green); }
+  .am-status-overdue,
+  .am-status-missing { color: var(--am-red); }
+
   .am-list,
   .am-timeline {
     font-size: .8rem;
@@ -475,6 +814,7 @@
   @media (max-width: 900px) {
     .am-header { align-items: start; flex-direction: column; gap: .75rem; }
     .am-summary { justify-content: start; }
+    .am-balance-header { align-items: start; flex-direction: column; gap: .75rem; }
     .am-workspace { grid-template-columns: 1fr; }
     .am-tree-panel { max-height: 45vh; min-height: 16rem; }
     .am-detail { min-height: 18rem; position: static; }

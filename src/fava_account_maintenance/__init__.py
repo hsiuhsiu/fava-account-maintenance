@@ -199,6 +199,18 @@ def _optional_string(value: Any) -> str | None:
     return None if value is None else str(value)
 
 
+def _safe_frequency(value: Any) -> tuple[int | None, bool]:
+    if value is None:
+        return None, False
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None, True
+    if parsed <= 0:
+        return None, True
+    return parsed, False
+
+
 def _is_generated_transaction(entry: data.Transaction) -> bool:
     return entry.flag == "P" or bool(entry.meta.get("__automatic__"))
 
@@ -319,6 +331,7 @@ def build_account_maintenance(
     last_activity: dict[str, dt.date] = {}
     first_transaction: dict[str, data.Transaction] = {}
     first_activity_currencies: dict[str, set[str]] = defaultdict(set)
+    posting_currencies: dict[str, set[str]] = defaultdict(set)
     recent_counterparts: dict[str, list[str]] = {}
 
     running_totals: dict[str, dict[str, Decimal]] = defaultdict(
@@ -360,6 +373,7 @@ def build_account_maintenance(
             if posting.units is None:
                 continue
             account = posting.account
+            posting_currencies[account].add(posting.units.currency)
             activity_count[account] += 1
             if account not in first_activity:
                 first_activity[account] = entry.date
@@ -411,6 +425,14 @@ def build_account_maintenance(
             if previous is None or previous.date <= entry.date:
                 latest_prices[entry.currency] = entry
 
+    latest_balances: dict[str, dict[str, data.Balance]] = {}
+    for account, by_currency in balances_by_account.items():
+        latest_balances[account] = {
+            currency: directives[-1]
+            for currency, directives in by_currency.items()
+            if directives
+        }
+
     account_rows: dict[str, dict[str, Any]] = {}
     for account in account_names:
         opens = opens_by_account[account]
@@ -432,6 +454,9 @@ def build_account_maintenance(
             close_date = None
 
         allowed_currencies = {str(currency) for currency in open_entry.currencies or ()}
+        frequency, invalid_frequency = _safe_frequency(
+            open_entry.meta.get("balance_frequency")
+        )
         kind = _account_kind(account, open_entry.meta, roots, settings)
         buffer_account = _is_buffer(account, open_entry.meta, settings)
         equity_role = (
@@ -441,6 +466,7 @@ def build_account_maintenance(
         )
         trackable = (
             account.startswith((f"{roots[0]}:", f"{roots[1]}:"))
+            or frequency is not None
             or buffer_account
         )
 
@@ -448,6 +474,76 @@ def build_account_maintenance(
         inventory = _inventory_rows(totals)
         nonzero = bool(inventory)
         inventory_currencies = {row["currency"] for row in inventory}
+
+        latest_by_currency = latest_balances.get(account, {})
+        if kind in settings.investment_kinds:
+            expected_currencies = set(inventory_currencies)
+            known_currencies = (
+                allowed_currencies
+                | posting_currencies.get(account, set())
+                | set(latest_by_currency)
+            )
+            expected_currencies |= operating_currencies & known_currencies
+        else:
+            expected_currencies = set(allowed_currencies)
+            if not expected_currencies:
+                expected_currencies = set(inventory_currencies)
+            if not expected_currencies:
+                expected_currencies = set(posting_currencies.get(account, set()))
+            if not expected_currencies:
+                expected_currencies = set(latest_by_currency)
+
+        balance_units: list[dict[str, Any]] = []
+        missing_balance_units: list[str] = []
+        overdue_balance_units: list[str] = []
+        for currency in sorted(expected_currencies):
+            directive = latest_by_currency.get(currency)
+            if directive is None:
+                missing_balance_units.append(currency)
+                balance_units.append(
+                    {
+                        "currency": currency,
+                        "date": None,
+                        "days_since": None,
+                        "amount": None,
+                        "status": "missing",
+                    }
+                )
+                continue
+            days_since = (today - directive.date).days
+            status = (
+                "overdue"
+                if frequency is not None and days_since > frequency
+                else "current"
+            )
+            if status == "overdue":
+                overdue_balance_units.append(currency)
+            balance_units.append(
+                {
+                    "currency": currency,
+                    "date": _iso(directive.date),
+                    "days_since": days_since,
+                    "amount": _format_decimal(directive.amount.number),
+                    "status": status,
+                }
+            )
+
+        if lifecycle == "closed":
+            balance_status = "closed"
+        elif lifecycle == "future" or not trackable:
+            balance_status = "not_applicable"
+        elif invalid_frequency:
+            balance_status = "invalid_frequency"
+        elif frequency is None:
+            balance_status = "unset"
+        elif not latest_by_currency:
+            balance_status = "never"
+        elif missing_balance_units:
+            balance_status = "partial"
+        elif overdue_balance_units:
+            balance_status = "overdue"
+        else:
+            balance_status = "current"
 
         pads = sorted(pads_by_account.get(account, []), key=lambda entry: entry.date)
         first_date = first_activity.get(account)
@@ -532,6 +628,13 @@ def build_account_maintenance(
                 reasons.append("never_used")
             elif activity_status in {"dormant_zero", "dormant_nonzero"}:
                 reasons.append(activity_status)
+            if balance_status in {
+                "invalid_frequency",
+                "never",
+                "overdue",
+                "partial",
+            }:
+                reasons.append(f"balance_{balance_status}")
         if buffer_account and lifecycle == "open" and nonzero:
             reasons.append("buffer_nonzero")
         if pad_status in {"late", "multiple", "multiple_initial"}:
@@ -577,6 +680,7 @@ def build_account_maintenance(
         account_rows[account] = {
             "type": "account",
             "account": account,
+            "root": account.split(":", 1)[0],
             "kind": kind,
             "nickname": _optional_string(open_entry.meta.get("nickname")),
             "purpose": _optional_string(open_entry.meta.get("purpose")),
@@ -601,6 +705,9 @@ def build_account_maintenance(
             "days_inactive": days_inactive,
             "activity_count": activity_count.get(account, 0),
             "activity_status": activity_status,
+            "balance_frequency": frequency,
+            "balance_status": balance_status,
+            "balance_units": balance_units,
             "pad_status": pad_status,
             "pads": [
                 {"date": _iso(pad.date), "source_account": pad.source_account}
@@ -720,6 +827,102 @@ def build_account_maintenance(
 
     rows = list(account_rows.values())
 
+    # Keep the original operational "what should I balance next?" queue as a
+    # separate view from the broader account-audit reasons.  An account enters
+    # this queue only when its current Open directive has a valid, explicit
+    # balance_frequency.  For multi-commodity accounts the oldest assertion is
+    # the limiting one; a missing commodity takes priority over every dated row.
+    balance_queue: list[dict[str, Any]] = []
+    for row in rows:
+        frequency = row["balance_frequency"]
+        if row["lifecycle"] != "open" or frequency is None:
+            continue
+
+        units = row["balance_units"]
+        missing_units = [
+            unit["currency"] for unit in units if unit["status"] == "missing"
+        ]
+        dated_units = [unit for unit in units if unit["date"] is not None]
+
+        if not units or missing_units:
+            freshness_status = "never" if not dated_units else "partial"
+            limiting_date = None
+            days_since = None
+            delta = None
+            status_ratio = None
+            overdue = True
+        else:
+            limiting_unit = max(
+                dated_units,
+                key=lambda unit: int(unit["days_since"]),
+            )
+            limiting_date = limiting_unit["date"]
+            days_since = int(limiting_unit["days_since"])
+            delta = days_since - frequency
+            status_ratio = days_since / frequency
+            overdue = days_since > frequency
+            freshness_status = "overdue" if overdue else "current"
+
+        balance_queue.append(
+            {
+                "account": row["account"],
+                "nickname": row["nickname"],
+                "frequency": frequency,
+                "last_balance": limiting_date,
+                "days_since": days_since,
+                "delta": delta,
+                "status_ratio": status_ratio,
+                "overdue": overdue,
+                "status": freshness_status,
+                "missing_units": missing_units,
+                "units": units,
+            }
+        )
+
+    def balance_queue_key(row: dict[str, Any]) -> tuple[int, int, str]:
+        if row["status"] in {"never", "partial"}:
+            return (0, 0, row["account"])
+        if row["overdue"]:
+            return (1, -int(row["delta"]), row["account"])
+        # Current accounts nearest their due date come first.
+        return (2, -int(row["delta"]), row["account"])
+
+    balance_queue.sort(key=balance_queue_key)
+
+    missing_guidance: list[dict[str, Any]] = []
+    for row in rows:
+        if (
+            row["lifecycle"] != "open"
+            or row["root"] not in roots[:2]
+            or row["balance_frequency"] is not None
+        ):
+            continue
+        dated_units = [
+            unit for unit in row["balance_units"] if unit["date"] is not None
+        ]
+        latest_unit = (
+            max(dated_units, key=lambda unit: unit["date"]) if dated_units else None
+        )
+        missing_guidance.append(
+            {
+                "account": row["account"],
+                "nickname": row["nickname"],
+                "last_balance": latest_unit["date"] if latest_unit else None,
+                "days_since": latest_unit["days_since"] if latest_unit else None,
+                "invalid": row["balance_status"] == "invalid_frequency",
+            }
+        )
+
+    missing_guidance.sort(
+        key=lambda row: (
+            not row["invalid"],
+            row["last_balance"] is not None,
+            -(int(row["days_since"]) if row["days_since"] is not None else 0),
+            row["account"],
+        )
+    )
+
+    balance_due = sum(row["status"] != "current" for row in balance_queue)
     summary = {
         "total": len(rows),
         "open": sum(row["lifecycle"] == "open" for row in rows),
@@ -731,6 +934,9 @@ def build_account_maintenance(
             row["is_buffer"] and row["lifecycle"] == "open" and row["nonzero"]
             for row in rows
         ),
+        "balance_tracked": len(balance_queue),
+        "balance_due": balance_due,
+        "balance_missing_frequency": len(missing_guidance),
     }
 
     default_key = f"group:{tree[0]['path']}" if tree else None
@@ -741,6 +947,8 @@ def build_account_maintenance(
         "tree": tree,
         "node_data": node_data,
         "default_key": default_key,
+        "balance_queue": balance_queue,
+        "missing_guidance": missing_guidance,
     }
 
 

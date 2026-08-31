@@ -3,7 +3,6 @@ from __future__ import annotations
 import datetime as dt
 import unittest
 from decimal import Decimal
-from importlib.resources import files
 
 from beancount.core import data
 from beancount.core.amount import Amount
@@ -83,6 +82,40 @@ def model(entries, config=None):
 
 
 class AccountMaintenanceModelTest(unittest.TestCase):
+    def test_future_balance_does_not_make_partial_brokerage_current(self):
+        account = "Assets:Household:Brokerage:Example"
+        entries = [
+            open_account(
+                dt.date(2020, 1, 1),
+                account,
+                ("USD", "AAA"),
+                balance_frequency=30,
+            ),
+            open_account(dt.date(2020, 1, 1), "Equity:Opening-Balances"),
+            transaction(
+                dt.date(2026, 8, 1),
+                [
+                    (account, 1, "AAA"),
+                    (account, 0, "USD"),
+                    ("Equity:Opening-Balances", -1, "AAA"),
+                ],
+            ),
+            balance(dt.date(2026, 8, 25), account, 0, "USD"),
+            balance(dt.date(2099, 1, 1), account, 1, "AAA"),
+        ]
+
+        row = model(entries)["node_data"][f"account:{account}"]
+
+        self.assertEqual(row["balance_status"], "partial")
+        self.assertEqual(
+            [
+                unit["currency"]
+                for unit in row["balance_units"]
+                if unit["status"] == "missing"
+            ],
+            ["AAA"],
+        )
+
     def test_explicit_zero_boundary_and_clean_close(self):
         account = "Liabilities:Household:CreditCard:ClosedCard"
         entries = [
@@ -237,36 +270,86 @@ class AccountMaintenanceModelTest(unittest.TestCase):
         self.assertFalse(row["needs_review"])
         self.assertEqual(result["summary"]["future"], 1)
 
-    def test_public_model_does_not_apply_balance_frequency_policy(self):
-        account = "Assets:Household:Checking:Example"
+    def test_balance_queue_prioritizes_missing_then_overdue_then_nearest_due(self):
+        prefix = "Assets:Household:Checking"
+        never = f"{prefix}:Never"
+        partial = f"{prefix}:Partial"
+        overdue = f"{prefix}:Overdue"
+        due_today = f"{prefix}:DueToday"
+        near_due = f"{prefix}:NearDue"
+        fresh = f"{prefix}:Fresh"
         entries = [
+            open_account(dt.date(2020, 1, 1), never, balance_frequency=30),
             open_account(
                 dt.date(2020, 1, 1),
-                account,
-                balance_frequency=1,
+                partial,
+                ("USD", "EUR"),
+                balance_frequency=30,
             ),
-            balance(dt.date(2020, 1, 1), account, 0),
+            balance(dt.date(2026, 8, 27), partial, 10, "USD"),
+            open_account(dt.date(2020, 1, 1), overdue, balance_frequency=30),
+            balance(dt.date(2026, 6, 28), overdue, 10),
+            open_account(dt.date(2020, 1, 1), due_today, balance_frequency=30),
+            balance(dt.date(2026, 7, 29), due_today, 10),
+            open_account(dt.date(2020, 1, 1), near_due, balance_frequency=30),
+            balance(dt.date(2026, 8, 1), near_due, 10),
+            open_account(dt.date(2020, 1, 1), fresh, balance_frequency=30),
+            balance(dt.date(2026, 8, 20), fresh, 10),
         ]
 
         result = model(entries)
-        row = result["node_data"][f"account:{account}"]
+        queue = result["balance_queue"]
 
-        self.assertNotIn("balance_frequency", row)
-        self.assertNotIn("balance_queue", result)
-        self.assertFalse(
-            any(reason.startswith("balance_") for reason in row["reasons"])
+        self.assertEqual(
+            [row["account"] for row in queue],
+            [never, partial, overdue, due_today, near_due, fresh],
         )
-
-    def test_public_template_opens_account_tree_without_balance_view(self):
-        template = (
-            files("fava_account_maintenance")
-            .joinpath("templates", "UpdateGuidance.html")
-            .read_text(encoding="utf-8")
+        self.assertEqual(
+            [row["status"] for row in queue],
+            ["never", "partial", "overdue", "current", "current", "current"],
         )
+        self.assertEqual(queue[1]["missing_units"], ["EUR"])
+        self.assertIsNone(queue[1]["last_balance"])
+        self.assertEqual(queue[2]["delta"], 31)
+        self.assertEqual(queue[3]["delta"], 0)
+        self.assertFalse(queue[3]["overdue"])
+        self.assertEqual(result["summary"]["balance_tracked"], 6)
+        self.assertEqual(result["summary"]["balance_due"], 3)
 
-        self.assertIn('data-am-default-view="all"', template)
-        self.assertNotIn("Balance 更新", template)
-        self.assertNotIn("balance_frequency", template)
+    def test_balance_guidance_excludes_closed_and_future_accounts(self):
+        tracked = "Assets:Household:Checking:Tracked"
+        closed = "Liabilities:Household:CreditCard:Closed"
+        future = "Assets:Household:Checking:Future"
+        missing = "Assets:Household:Checking:MissingFrequency"
+        invalid = "Liabilities:Household:CreditCard:InvalidFrequency"
+        equity = "Equity:Uncategorized"
+        entries = [
+            open_account(dt.date(2020, 1, 1), tracked, balance_frequency=30),
+            balance(dt.date(2026, 8, 20), tracked, 10),
+            open_account(dt.date(2020, 1, 1), closed, balance_frequency=30),
+            close_account(dt.date(2026, 1, 1), closed),
+            open_account(dt.date(2027, 1, 1), future, balance_frequency=30),
+            open_account(dt.date(2020, 1, 1), missing),
+            open_account(
+                dt.date(2020, 1, 1),
+                invalid,
+                balance_frequency="monthly",
+            ),
+            open_account(dt.date(2020, 1, 1), equity),
+        ]
+
+        result = model(entries)
+
+        self.assertEqual(
+            [row["account"] for row in result["balance_queue"]],
+            [tracked],
+        )
+        self.assertEqual(
+            [row["account"] for row in result["missing_guidance"]],
+            [invalid, missing],
+        )
+        self.assertTrue(result["missing_guidance"][0]["invalid"])
+        self.assertEqual(result["summary"]["balance_missing_frequency"], 2)
 
     def test_source_paths_are_private_by_default_and_can_be_hidden(self):
         account = "Assets:Household:Checking:Example"
