@@ -14,6 +14,13 @@
 - Preserve colon separators in client-generated account URLs so Fava's frontend
   router receives the real Beancount account name.
 
+## 0.2.1+personal.2 - 2026-09-10
+
+- Treat a zero Balance assertion dated in 2099 as a perpetual-zero guard when
+  the account/currency is currently zero and has no known future postings.
+- Remove guarded account/currency pairs from the Balance freshness queue.
+- Add one-click account-name copying to the Balance tables.
+
 ## 0.2.1+personal.1 - 2026-08-31
 
 - Rebase the personal variant onto the public 0.2.1 release while preserving

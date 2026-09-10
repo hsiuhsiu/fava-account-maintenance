@@ -174,6 +174,18 @@ than inferred automatically. `tracking_mode` defaults to `"transactions"` and
 must not be combined with `transactions_complete_from` when set to
 `"balance-only"`.
 
+To mark an account/currency as permanently zero, use a zero Balance in year
+2099:
+
+```beancount
+2099-01-01 balance Assets:Household:Checking:Finished  0 USD
+```
+
+The guard suppresses Balance freshness only while the current inventory remains
+zero and the ledger contains no future transaction postings in that currency.
+This lets a genuinely scheduled future account continue to appear until its
+planned activity has finished.
+
 ## Extension configuration
 
 Configuration is optional. Fava passes the last string in the custom directive

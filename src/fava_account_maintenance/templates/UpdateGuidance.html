@@ -1,5 +1,16 @@
 {% set d = extension.compute() %}
 
+{% macro account_link_with_copy(account) %}
+  <div class="am-account-copy-row">
+    <a href="{{ url_for('account', name=account) }}">{{ account }}</a>
+    <button type="button" class="am-copy-account"
+            data-am-copy-account="{{ account }}"
+            aria-label="複製帳戶名稱：{{ account }}" title="複製帳戶名稱">
+      <span data-am-copy-label aria-live="polite">複製</span>
+    </button>
+  </div>
+{% endmacro %}
+
 {% macro render_node(node) %}
   {% if node.children %}
     <li class="am-node am-group" data-am-node data-am-modes="{{ node.modes|join(' ') }}">
@@ -109,7 +120,7 @@
             {% for r in d.balance_queue %}
               <tr class="am-freshness-row am-freshness-{{ r.status }}">
                 <td class="am-freshness-account">
-                  <a href="{{ url_for('account', name=r.account) }}">{{ r.account }}</a>
+                  {{ account_link_with_copy(r.account) }}
                   {% if r.nickname %}<small>{{ r.nickname }}</small>{% endif %}
                 </td>
                 <td>{{ r.frequency }} 天</td>
@@ -185,7 +196,7 @@
               {% for r in d.missing_guidance %}
                 <tr>
                   <td class="am-freshness-account">
-                    <a href="{{ url_for('account', name=r.account) }}">{{ r.account }}</a>
+                    {{ account_link_with_copy(r.account) }}
                     {% if r.nickname %}<small>{{ r.nickname }}</small>{% endif %}
                   </td>
                   <td>{{ r.last_balance or '—' }}</td>
@@ -436,6 +447,41 @@
 
   .am-freshness-account a {
     overflow-wrap: anywhere;
+  }
+
+  .am-account-copy-row {
+    align-items: flex-start;
+    display: flex;
+    gap: .35rem;
+  }
+
+  .am-copy-account {
+    background: transparent;
+    border: 1px solid var(--am-line);
+    border-radius: .35rem;
+    color: var(--am-muted);
+    cursor: pointer;
+    flex: 0 0 auto;
+    font: inherit;
+    font-size: .65rem;
+    line-height: 1;
+    padding: .25rem .38rem;
+  }
+
+  .am-copy-account:hover,
+  .am-copy-account:focus-visible {
+    border-color: var(--am-blue);
+    color: var(--am-blue);
+  }
+
+  .am-copy-account[data-am-copy-state="success"] {
+    border-color: var(--am-green);
+    color: var(--am-green);
+  }
+
+  .am-copy-account[data-am-copy-state="error"] {
+    border-color: var(--am-red);
+    color: var(--am-red);
   }
 
   .am-freshness-account small {

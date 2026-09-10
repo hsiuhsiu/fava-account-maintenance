@@ -91,6 +91,93 @@ class AccountMaintenanceModelTest(unittest.TestCase):
         self.assertIn("encodeURI(account)", script)
         self.assertNotIn("encodeURIComponent(account)", script)
 
+    def test_2099_zero_guard_removes_perpetually_zero_account_from_queue(self):
+        account = "Assets:Household:Buffer:DirectDeposit"
+        entries = [
+            open_account(
+                dt.date(2020, 1, 1),
+                account,
+                balance_frequency=30,
+            ),
+            balance(dt.date(2025, 1, 1), account, 0),
+            balance(dt.date(2099, 1, 1), account, 0),
+        ]
+
+        result = model(entries)
+        row = result["node_data"][f"account:{account}"]
+
+        self.assertEqual(row["balance_status"], "perpetual_zero")
+        self.assertEqual(row["perpetual_zero_units"], ["USD"])
+        self.assertEqual(row["balance_units"], [])
+        self.assertEqual(result["balance_queue"], [])
+        self.assertEqual(result["summary"]["balance_tracked"], 0)
+        self.assertEqual(result["summary"]["balance_due"], 0)
+
+    def test_2099_zero_guard_does_not_hide_known_future_activity(self):
+        account = "Assets:Household:Buffer:Planned"
+        entries = [
+            open_account(
+                dt.date(2020, 1, 1),
+                account,
+                balance_frequency=30,
+            ),
+            balance(dt.date(2025, 1, 1), account, 0),
+            transaction(
+                dt.date(2026, 9, 1),
+                [(account, 10, "USD"), ("Assets:Ignored", -10, "USD")],
+            ),
+            transaction(
+                dt.date(2026, 9, 2),
+                [(account, -10, "USD"), ("Expenses:Ignored", 10, "USD")],
+            ),
+            balance(dt.date(2099, 1, 1), account, 0),
+        ]
+
+        result = model(entries)
+        row = result["node_data"][f"account:{account}"]
+
+        self.assertEqual(row["balance_status"], "overdue")
+        self.assertEqual(row["perpetual_zero_units"], [])
+        self.assertEqual(result["balance_queue"][0]["account"], account)
+
+    def test_balance_tables_offer_account_copy_buttons(self):
+        package = files("fava_account_maintenance")
+        template = package.joinpath("templates/UpdateGuidance.html").read_text(
+            encoding="utf-8"
+        )
+        script = package.joinpath("UpdateGuidance.js").read_text(encoding="utf-8")
+
+        self.assertEqual(template.count("account_link_with_copy(r.account)"), 2)
+        self.assertIn("data-am-copy-account", template)
+        self.assertIn("navigator.clipboard?.writeText", script)
+
+    def test_2099_zero_guard_does_not_hide_known_future_postings(self):
+        account = "Assets:Household:Buffer:Planned"
+        entries = [
+            open_account(
+                dt.date(2020, 1, 1),
+                account,
+                balance_frequency=30,
+            ),
+            transaction(
+                dt.date(2027, 1, 1),
+                [(account, 10, "USD"), ("Assets:Ignored", -10, "USD")],
+            ),
+            transaction(
+                dt.date(2027, 1, 2),
+                [(account, -10, "USD"), ("Assets:Ignored", 10, "USD")],
+            ),
+            balance(dt.date(2099, 1, 1), account, 0),
+        ]
+
+        result = model(entries)
+        row = result["node_data"][f"account:{account}"]
+
+        self.assertEqual(row["perpetual_zero_units"], [])
+        self.assertEqual(row["balance_status"], "never")
+        self.assertEqual(result["balance_queue"][0]["account"], account)
+        self.assertEqual(result["balance_queue"][0]["status"], "never")
+
     def test_declared_tracking_start_accepts_earlier_padding(self):
         account = "Assets:Household:Mileage:AcceptedHistory"
         start = dt.date(2021, 10, 5)

@@ -13,6 +13,8 @@ from fava.ext import FavaExtensionBase
 
 __version__ = "0.3.0+personal.1"
 
+PERPETUAL_ZERO_YEAR = 2099
+
 DEFAULT_INVESTMENT_KINDS = frozenset(
     {"Brokerage", "Education", "Edu", "Exchange", "Fund", "Investment", "Retirement"}
 )
@@ -446,8 +448,29 @@ def build_account_maintenance(
     balances_by_account: dict[str, dict[str, list[data.Balance]]] = defaultdict(
         lambda: defaultdict(list)
     )
+    perpetual_zero_balances: dict[str, dict[str, data.Balance]] = defaultdict(dict)
+    future_posting_currencies: dict[str, set[str]] = defaultdict(set)
     pads_by_account: dict[str, list[data.Pad]] = defaultdict(list)
     latest_prices: dict[str, data.Price] = {}
+
+    for entry in all_entries:
+        if isinstance(entry, data.Transaction) and entry.date > today:
+            for posting in entry.postings:
+                if posting.units is not None:
+                    future_posting_currencies[posting.account].add(
+                        posting.units.currency
+                    )
+        elif (
+            isinstance(entry, data.Balance)
+            and entry.date > today
+            and entry.date.year == PERPETUAL_ZERO_YEAR
+            and entry.amount.number == 0
+        ):
+            previous = perpetual_zero_balances[entry.account].get(
+                entry.amount.currency
+            )
+            if previous is None or previous.date <= entry.date:
+                perpetual_zero_balances[entry.account][entry.amount.currency] = entry
 
     for entry in as_of_entries:
         if isinstance(entry, data.Balance):
@@ -530,10 +553,19 @@ def build_account_maintenance(
             if not expected_currencies:
                 expected_currencies = set(latest_by_currency)
 
+        perpetual_zero_units = sorted(
+            currency
+            for currency in expected_currencies
+            if currency in perpetual_zero_balances.get(account, {})
+            and totals.get(currency, Decimal()) == 0
+            and currency not in future_posting_currencies.get(account, set())
+        )
+        freshness_currencies = expected_currencies - set(perpetual_zero_units)
+
         balance_units: list[dict[str, Any]] = []
         missing_balance_units: list[str] = []
         overdue_balance_units: list[str] = []
-        for currency in sorted(expected_currencies):
+        for currency in sorted(freshness_currencies):
             directive = latest_by_currency.get(currency)
             if directive is None:
                 missing_balance_units.append(currency)
@@ -573,6 +605,8 @@ def build_account_maintenance(
             balance_status = "invalid_frequency"
         elif frequency is None:
             balance_status = "unset"
+        elif expected_currencies and not freshness_currencies:
+            balance_status = "perpetual_zero"
         elif not latest_by_currency:
             balance_status = "never"
         elif missing_balance_units:
@@ -791,6 +825,7 @@ def build_account_maintenance(
             "balance_frequency": frequency,
             "balance_status": balance_status,
             "balance_units": balance_units,
+            "perpetual_zero_units": perpetual_zero_units,
             "pad_status": pad_status,
             "pads": [
                 {"date": _iso(pad.date), "source_account": pad.source_account}
@@ -924,7 +959,11 @@ def build_account_maintenance(
     balance_queue: list[dict[str, Any]] = []
     for row in rows:
         frequency = row["balance_frequency"]
-        if row["lifecycle"] != "open" or frequency is None:
+        if (
+            row["lifecycle"] != "open"
+            or frequency is None
+            or row["balance_status"] == "perpetual_zero"
+        ):
             continue
 
         units = row["balance_units"]

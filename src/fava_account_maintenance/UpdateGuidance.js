@@ -15,6 +15,7 @@ const ACTIVITY = {
 
 const BALANCE = {
   current: "核對正常",
+  perpetual_zero: "永久零值守門",
   overdue: "核對逾期",
   partial: "部分幣別缺漏",
   never: "從未核對",
@@ -104,6 +105,7 @@ const EVENT = {
 };
 
 const ACCOUNT_MAINTENANCE_STATE = new WeakMap();
+const COPY_RESET_TIMERS = new WeakMap();
 
 function element(tag, className, value) {
   const node = document.createElement(tag);
@@ -114,6 +116,60 @@ function element(tag, className, value) {
 
 function fallback(value, empty = "—") {
   return value === undefined || value === null || value === "" ? empty : String(value);
+}
+
+function legacyCopyText(value) {
+  const input = element("textarea");
+  input.value = value;
+  input.setAttribute("readonly", "");
+  input.style.position = "fixed";
+  input.style.opacity = "0";
+  document.body.append(input);
+  input.select();
+  input.setSelectionRange(0, input.value.length);
+  const copied = document.execCommand("copy");
+  input.remove();
+  if (!copied) throw new Error("Clipboard copy failed");
+}
+
+async function copyText(value) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return;
+    } catch (_error) {
+      // Fall through when the API exists but this context cannot use it.
+    }
+  }
+  legacyCopyText(value);
+}
+
+function showCopyResult(button, copied) {
+  const label = button.querySelector("[data-am-copy-label]");
+  if (!label) return;
+
+  const previous = COPY_RESET_TIMERS.get(button);
+  if (previous) window.clearTimeout(previous);
+  label.textContent = copied ? "已複製" : "複製失敗";
+  button.dataset.amCopyState = copied ? "success" : "error";
+
+  const timer = window.setTimeout(() => {
+    label.textContent = "複製";
+    delete button.dataset.amCopyState;
+    COPY_RESET_TIMERS.delete(button);
+  }, 1600);
+  COPY_RESET_TIMERS.set(button, timer);
+}
+
+async function copyAccountName(button) {
+  const account = button.dataset.amCopyAccount;
+  if (!account) return;
+  try {
+    await copyText(account);
+    showCopyResult(button, true);
+  } catch (_error) {
+    showCopyResult(button, false);
+  }
 }
 
 function accountUrl(account) {
@@ -276,6 +332,7 @@ function renderAccount(detail, row) {
   addKeyValues(balance, [
     ["整體狀態", BALANCE[row.balance_status] || row.balance_status],
     ["預期週期", row.balance_frequency ? `${row.balance_frequency} 天` : "未設定"],
+    ["永久零值", row.perpetual_zero_units.join(" · ") || null],
   ]);
   if (row.balance_units.length) {
     addTable(
@@ -293,7 +350,10 @@ function renderAccount(detail, row) {
       ]),
     );
   } else {
-    balance.append(element("p", "am-detail-subtitle", "沒有適用的逐幣別 Balance 資料。"));
+    const message = row.perpetual_zero_units.length
+      ? "2099 零額 Balance 持續守門，不需要 freshness 更新。"
+      : "沒有適用的逐幣別 Balance 資料。";
+    balance.append(element("p", "am-detail-subtitle", message));
   }
 
   const history = addSection(detail, "歷史起點與 Pad");
@@ -485,6 +545,14 @@ function handleAccountMaintenanceClick(event) {
 
   const state = initAccountMaintenance(root);
   if (!state) return;
+
+  const copyButton = target.closest("[data-am-copy-account]");
+  if (copyButton && root.contains(copyButton)) {
+    event.preventDefault();
+    if (event.currentTarget !== document) event.stopPropagation();
+    void copyAccountName(copyButton);
+    return;
+  }
 
   const filter = target.closest("[data-am-filter]");
   if (filter && root.contains(filter)) {
