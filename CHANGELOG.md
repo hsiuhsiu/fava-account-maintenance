@@ -14,6 +14,12 @@
 - Preserve colon separators in client-generated account URLs so Fava's frontend
   router receives the real Beancount account name.
 
+## 0.2.1+personal.3 - 2026-09-10
+
+- Accept a next-day Balance assertion as a current freshness checkpoint, matching
+  Beancount's beginning-of-day processing order.
+- Keep Balance assertions more than one day ahead out of freshness calculations.
+
 ## 0.2.1+personal.2 - 2026-09-10
 
 - Treat a zero Balance assertion dated in 2099 as a perpetual-zero guard when

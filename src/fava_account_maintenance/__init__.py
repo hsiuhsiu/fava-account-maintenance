@@ -14,6 +14,7 @@ from fava.ext import FavaExtensionBase
 __version__ = "0.3.0+personal.1"
 
 PERPETUAL_ZERO_YEAR = 2099
+BALANCE_FRESHNESS_LOOKAHEAD = dt.timedelta(days=1)
 
 DEFAULT_INVESTMENT_KINDS = frozenset(
     {"Brokerage", "Education", "Edu", "Exchange", "Fund", "Investment", "Retirement"}
@@ -329,8 +330,10 @@ def build_account_maintenance(
     The input must be the fully loaded entry stream, including plugin-generated
     padding transactions. Generated transactions affect inventory but are not
     counted as user activity. Ordinary transaction postings and Balance
-    assertions count as activity. Future-dated Balance assertions count for
-    activity recency only; all other state remains bounded by ``today``.
+    assertions count as activity. A next-day Balance assertion also counts for
+    freshness because Beancount checks it before that day's transactions; later
+    assertions count for activity recency only. All other state remains bounded
+    by ``today``.
     """
 
     today = today or dt.date.today()
@@ -425,8 +428,7 @@ def build_account_maintenance(
 
     # A Balance assertion means the account was deliberately reviewed, so it
     # refreshes activity even when it is future-dated. Keep this separate from
-    # ``as_of_entries`` so a future assertion does not affect current inventory,
-    # price, or balance-freshness calculations.
+    # ``as_of_entries`` so it never affects current inventory or price data.
     for entry in all_entries:
         if not isinstance(entry, data.Balance):
             continue
@@ -472,9 +474,15 @@ def build_account_maintenance(
             if previous is None or previous.date <= entry.date:
                 perpetual_zero_balances[entry.account][entry.amount.currency] = entry
 
-    for entry in as_of_entries:
+    balance_freshness_through = today + BALANCE_FRESHNESS_LOOKAHEAD
+    for entry in all_entries:
         if isinstance(entry, data.Balance):
-            balances_by_account[entry.account][entry.amount.currency].append(entry)
+            if entry.date <= balance_freshness_through:
+                balances_by_account[entry.account][entry.amount.currency].append(
+                    entry
+                )
+        elif entry.date > today:
+            continue
         elif isinstance(entry, data.Pad):
             pads_by_account[entry.account].append(entry)
         elif isinstance(entry, data.Price):
@@ -579,7 +587,7 @@ def build_account_maintenance(
                     }
                 )
                 continue
-            days_since = (today - directive.date).days
+            days_since = max((today - directive.date).days, 0)
             status = (
                 "overdue"
                 if frequency is not None and days_since > frequency

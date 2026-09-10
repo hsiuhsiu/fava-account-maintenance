@@ -151,6 +151,51 @@ class AccountMaintenanceModelTest(unittest.TestCase):
         self.assertIn("data-am-copy-account", template)
         self.assertIn("navigator.clipboard?.writeText", script)
 
+    def test_next_day_balance_counts_as_current_freshness(self):
+        account = "Assets:Household:Checking:NextDay"
+        next_day = TODAY + dt.timedelta(days=1)
+        entries = [
+            open_account(
+                dt.date(2020, 1, 1),
+                account,
+                balance_frequency=30,
+            ),
+            balance(next_day, account, 0),
+        ]
+
+        result = model(entries)
+        row = result["node_data"][f"account:{account}"]
+        unit = row["balance_units"][0]
+        queue_row = result["balance_queue"][0]
+
+        self.assertEqual(row["balance_status"], "current")
+        self.assertEqual(unit["date"], next_day.isoformat())
+        self.assertEqual(unit["days_since"], 0)
+        self.assertEqual(queue_row["last_balance"], next_day.isoformat())
+        self.assertEqual(queue_row["days_since"], 0)
+        self.assertEqual(queue_row["status"], "current")
+
+    def test_balance_more_than_one_day_ahead_is_not_freshness(self):
+        account = "Assets:Household:Checking:Later"
+        later = TODAY + dt.timedelta(days=2)
+        entries = [
+            open_account(
+                dt.date(2020, 1, 1),
+                account,
+                balance_frequency=30,
+            ),
+            balance(later, account, 0),
+        ]
+
+        result = model(entries)
+        row = result["node_data"][f"account:{account}"]
+        queue_row = result["balance_queue"][0]
+
+        self.assertEqual(row["last_activity"], later.isoformat())
+        self.assertEqual(row["balance_status"], "never")
+        self.assertIsNone(row["balance_units"][0]["date"])
+        self.assertEqual(queue_row["status"], "never")
+
     def test_2099_zero_guard_does_not_hide_known_future_postings(self):
         account = "Assets:Household:Buffer:Planned"
         entries = [

@@ -22,8 +22,12 @@ example ledger contain only synthetic account names and amounts.
   date.
 - Open, closed, future, unused, dormant-zero, and dormant-nonzero accounts.
 - Activity includes ordinary transaction postings and Balance assertions.
-  Future-dated Balance assertions count as maintenance activity without changing
-  the report's as-of inventory or price calculations.
+  A next-day Balance also counts for freshness because Beancount processes it
+  before that day's transactions; later future assertions count only as activity.
+  Future directives never change the report's as-of inventory or price data.
+- A zero Balance assertion dated in 2099 acts as a perpetual-zero guard. When
+  that account/currency is currently zero and has no known future transaction
+  postings, it has no freshness obligation and is omitted from Balance 更新.
 - Whether an account explicitly started at zero, was seeded from Equity, or
   began with Pad.
 - Late or repeated Pad directives that may indicate a historical gap.
