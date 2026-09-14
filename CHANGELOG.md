@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2 - 2026-09-13
+
+- Preserve colon separators in client-generated account URLs so Fava's frontend
+  router receives the real Beancount account name.
+
 ## 0.2.1 - 2026-08-31
 
 - Count Balance assertions as account activity for dormant-account detection.
