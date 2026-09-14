@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0+personal.1 - 2026-09-13
+
+- Rebase the personal Balance freshness workflow onto public version 0.3.0.
+- Preserve perpetual-zero guards, next-day Balance checkpoints, and account-copy
+  controls while inheriting the public tracking-policy metadata.
+
 ## 0.3.0 - 2026-09-13
 
 - Add `transactions_complete_from` account metadata for explicitly accepted
