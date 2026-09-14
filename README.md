@@ -19,6 +19,8 @@ example ledger contain only synthetic account names and amounts.
 - Whether an account explicitly started at zero, was seeded from Equity, or
   began with Pad.
 - Late or repeated Pad directives that may indicate a historical gap.
+- Declared transaction-history cutovers and accounts intentionally maintained
+  from balance snapshots rather than complete transaction detail.
 - Configurable investment, buffer, and Equity-role conventions.
 
 The extension does not edit the ledger and does not make network requests.
@@ -100,6 +102,8 @@ Supported `open` metadata:
 | --- | --- |
 | `nickname` | Short label displayed beside the full account name. |
 | `purpose` | Reminder of why the account exists. |
+| `tracking_mode` | Omit for complete transaction tracking; use `"balance-only"` when source-backed balance snapshots are authoritative and individual activity may be incomplete. |
+| `transactions_complete_from` | Native Beancount date for the first day whose transaction history is required to be complete. |
 | `maintenance_kind` | Overrides the account-kind component for this account. |
 | `maintenance_buffer` | `TRUE` or `FALSE` override for buffer detection. |
 | `maintenance_role` | Equity role override; see the configuration section. |
@@ -113,6 +117,45 @@ For example:
 2020-01-01 open Assets:Household:Clearing:Transfers USD
   maintenance_buffer: TRUE
 ```
+
+### Historical cutovers and balance-only accounts
+
+Use a declared cutover when older activity has been accepted as untraceable but
+transactions must be complete from a known date onward:
+
+```beancount
+2015-04-16 open Assets:Household:Mileage:Hotel POINT
+  transactions_complete_from: 2021-10-05
+
+2021-10-04 pad Assets:Household:Mileage:Hotel Equity:Opening-Balances
+2021-10-05 balance Assets:Household:Mileage:Hotel  94638 POINT
+```
+
+The cutover date is the first date covered by the completeness promise. Because
+Beancount processes a Balance assertion before same-day transactions, a Balance
+on that date anchors the prior history. Pads strictly before the date are treated
+as accepted history; a Pad on or after the date remains a review issue. A past or
+present cutover without a same-day Balance is also shown for review.
+
+For an account whose ongoing source balance matters but whose individual
+activity is intentionally incomplete, use balance-only tracking:
+
+```beancount
+2023-11-08 open Assets:Household:Mileage:Rewards POINT
+  tracking_mode: "balance-only"
+```
+
+Known transactions may still be recorded, but repeated Pad directives are
+expected and are not treated as history gaps. Balance-only does not disable
+other lifecycle, dormancy, buffer, or balance-freshness checks supplied by a
+deployment. Do not use it merely to hide unresolved ordinary bank or credit-card
+activity; it explicitly means transaction-flow reports for that account may be
+incomplete.
+
+Both fields describe bookkeeping policy and should be set deliberately rather
+than inferred automatically. `tracking_mode` defaults to `"transactions"` and
+must not be combined with `transactions_complete_from` when set to
+`"balance-only"`.
 
 ## Extension configuration
 

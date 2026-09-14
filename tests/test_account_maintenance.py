@@ -91,6 +91,109 @@ class AccountMaintenanceModelTest(unittest.TestCase):
         self.assertIn("encodeURI(account)", script)
         self.assertNotIn("encodeURIComponent(account)", script)
 
+    def test_declared_tracking_start_accepts_earlier_padding(self):
+        account = "Assets:Household:Mileage:AcceptedHistory"
+        start = dt.date(2021, 10, 5)
+        entries = [
+            open_account(
+                dt.date(2015, 4, 16),
+                account,
+                ("POINT",),
+                transactions_complete_from=start,
+            ),
+            transaction(
+                dt.date(2016, 1, 1),
+                [(account, 10, "POINT"), ("Income:Ignored", -10, "POINT")],
+            ),
+            pad(dt.date(2021, 10, 4), account),
+            transaction(
+                dt.date(2021, 10, 4),
+                [(account, 90, "POINT"), ("Equity:Opening-Balances", -90, "POINT")],
+                flag="P",
+            ),
+            balance(start, account, 100, "POINT"),
+            balance(dt.date(2026, 8, 20), account, 100, "POINT"),
+        ]
+
+        result = model(entries)
+        row = result["node_data"][f"account:{account}"]
+
+        self.assertEqual(row["tracking_mode"], "transactions")
+        self.assertEqual(row["transactions_complete_from"], "2021-10-05")
+        self.assertTrue(row["tracking_boundary_balance"])
+        self.assertEqual(row["history_boundary"], "declared_tracking_start")
+        self.assertEqual(row["pad_status"], "accepted_before_tracking_start")
+        self.assertNotIn("pad_gap", row["reasons"])
+        self.assertFalse(row["needs_review"])
+        self.assertFalse(row["backfill_candidate"])
+        self.assertEqual(result["summary"]["declared_tracking_start"], 1)
+
+    def test_pad_on_or_after_tracking_start_is_a_review_reason(self):
+        account = "Assets:Household:Checking:UnexpectedGap"
+        start = dt.date(2021, 10, 5)
+        entries = [
+            open_account(
+                dt.date(2020, 1, 1),
+                account,
+                transactions_complete_from=start,
+            ),
+            balance(start, account, 0),
+            pad(start, account),
+            balance(dt.date(2026, 8, 20), account, 0),
+        ]
+
+        row = model(entries)["node_data"][f"account:{account}"]
+
+        self.assertEqual(row["pad_status"], "after_tracking_start")
+        self.assertIn("pad_after_transactions_complete", row["reasons"])
+        self.assertTrue(row["needs_review"])
+        self.assertTrue(row["backfill_candidate"])
+
+    def test_balance_only_account_accepts_repeated_padding(self):
+        account = "Assets:Household:Mileage:Snapshot"
+        entries = [
+            open_account(
+                dt.date(2023, 11, 8),
+                account,
+                ("POINT",),
+                tracking_mode="balance-only",
+            ),
+            transaction(
+                dt.date(2023, 12, 1),
+                [(account, 10, "POINT"), ("Income:Ignored", -10, "POINT")],
+            ),
+            pad(dt.date(2024, 1, 1), account),
+            pad(dt.date(2026, 8, 19), account),
+            balance(dt.date(2026, 8, 20), account, 10, "POINT"),
+        ]
+
+        result = model(entries)
+        row = result["node_data"][f"account:{account}"]
+
+        self.assertEqual(row["tracking_mode"], "balance-only")
+        self.assertEqual(row["history_boundary"], "balance_only")
+        self.assertEqual(row["pad_status"], "expected_balance_only")
+        self.assertNotIn("pad_gap", row["reasons"])
+        self.assertFalse(row["needs_review"])
+        self.assertFalse(row["backfill_candidate"])
+        self.assertEqual(result["summary"]["balance_only"], 1)
+
+    def test_tracking_start_requires_same_day_balance(self):
+        account = "Assets:Household:Checking:Unanchored"
+        entries = [
+            open_account(
+                dt.date(2020, 1, 1),
+                account,
+                transactions_complete_from=dt.date(2026, 1, 1),
+            ),
+            balance(dt.date(2026, 8, 20), account, 0),
+        ]
+
+        row = model(entries)["node_data"][f"account:{account}"]
+
+        self.assertFalse(row["tracking_boundary_balance"])
+        self.assertIn("tracking_boundary_missing_balance", row["reasons"])
+
     def test_explicit_zero_boundary_and_clean_close(self):
         account = "Liabilities:Household:CreditCard:ClosedCard"
         entries = [

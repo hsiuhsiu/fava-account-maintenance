@@ -17,6 +17,8 @@ const HISTORY = {
   explicit_zero: "明確從零開始",
   opening_pad: "以期初 Pad 匯入",
   late_pad: "帳內期間仍有 Pad",
+  declared_tracking_start: "已宣告完整流水起點",
+  balance_only: "只維護餘額",
   equity_seeded: "由 Equity 建立起始值",
   implicit_zero: "從 Open 隱含為零",
   unused: "尚無活動歷史",
@@ -27,6 +29,8 @@ const HISTORY_NOTE = {
   explicit_zero: "第一筆活動當時或之前，相關幣別已有零額 Balance assertion。",
   opening_pad: "起點以 Pad 帶入；若要向前追溯，可逐步用更早的真實交易取代。",
   late_pad: "活動開始後仍出現 Pad，代表帳內期間可能有缺口，宜優先查看。",
+  declared_tracking_start: "完整流水起點以前的 Pad 已被明確接受；起點當日的 Balance 錨定先前歷史。",
+  balance_only: "此帳戶以來源餘額為準，不要求逐筆記錄所有活動；已知交易仍可保留。",
   equity_seeded: "第一筆 transaction 活動直接由 Equity 建立餘額；起點在帳內，但外部歷史未獲證實。",
   implicit_zero: "Beancount 從 Open 隱含以零開始，但沒有外部零額 Balance 證明。",
   unused: "帳戶已 Open，但尚無一般 transaction posting 或 Balance assertion。",
@@ -39,6 +43,15 @@ const PAD = {
   multiple_initial: "多筆期初 Pad",
   late: "後期 Pad",
   multiple: "多段 Pad",
+  accepted_before_tracking_start: "起點前 Pad（已接受）",
+  expected_balance_only: "餘額式 Pad（預期）",
+  after_tracking_start: "完整起點後仍有 Pad",
+  multiple_after_tracking_start: "完整起點後有多筆 Pad",
+};
+
+const TRACKING_MODE = {
+  transactions: "逐筆交易",
+  "balance-only": "只維護餘額",
 };
 
 const EQUITY_ROLE = {
@@ -59,6 +72,11 @@ const REASON = {
   dormant_nonzero: "長期未用但仍有餘額",
   buffer_nonzero: "預期歸零的 Buffer 目前仍有餘額",
   pad_gap: "Pad 不只出現在單一、乾淨的期初位置",
+  pad_after_transactions_complete: "宣告完整流水起點後仍出現 Pad",
+  tracking_boundary_missing_balance: "完整流水起點當日缺少 Balance 錨點",
+  invalid_tracking_mode: "tracking_mode 不是支援的值",
+  invalid_transactions_complete_from: "transactions_complete_from 不是有效日期或早於 Open",
+  tracking_policy_conflict: "balance-only 不應同時設定完整流水起點",
   equity_recent_usage: "歷史／不明來源 Equity 最近仍被使用",
 };
 
@@ -184,6 +202,8 @@ function renderGroup(detail, row) {
   addKeyValues(state, [
     ["已關閉", counts.closed],
     ["尚未開始", counts.future],
+    ["只維護餘額", counts.balance_only],
+    ["已宣告完整起點", counts.declared_tracking_start],
     ["目前非零", counts.nonzero],
     ["目前為零", counts.zero],
   ]);
@@ -212,6 +232,10 @@ function renderAccount(detail, row) {
 
   const badges = element("div", "am-badges");
   addBadge(badges, LIFECYCLE[row.lifecycle] || row.lifecycle);
+  if (row.tracking_mode === "balance-only") addBadge(badges, "只維護餘額");
+  if (row.transactions_complete_from) {
+    addBadge(badges, `完整流水自 ${row.transactions_complete_from}`);
+  }
   if (row.backfill_candidate) addBadge(badges, "可向前追溯");
   for (const reason of row.reasons) addBadge(badges, REASON[reason] || reason, true);
   detail.append(badges);
@@ -234,6 +258,16 @@ function renderAccount(detail, row) {
 
   const history = addSection(detail, "歷史起點與 Pad");
   addKeyValues(history, [
+    ["維護方式", TRACKING_MODE[row.tracking_mode] || row.tracking_mode],
+    ["完整流水起點", row.transactions_complete_from],
+    [
+      "切點 Balance",
+      row.transactions_complete_from
+        ? row.tracking_boundary_balance
+          ? "已建立"
+          : "缺少"
+        : null,
+    ],
     ["歷史邊界", HISTORY[row.history_boundary] || row.history_boundary],
     ["Pad 狀態", PAD[row.pad_status] || row.pad_status],
     ["起始 Equity", row.equity_counterparts.join(" · ") || null],

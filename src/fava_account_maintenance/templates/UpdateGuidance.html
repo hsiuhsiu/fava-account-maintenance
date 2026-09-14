@@ -55,6 +55,8 @@
       <span><strong>{{ d.summary.closed }}</strong> 關閉</span>
       <span><strong>{{ d.summary.needs_review }}</strong> 需查看</span>
       <span><strong>{{ d.summary.backfill }}</strong> 可回溯</span>
+      {% if d.summary.balance_only %}<span><strong>{{ d.summary.balance_only }}</strong> 只維護餘額</span>{% endif %}
+      {% if d.summary.declared_tracking_start %}<span><strong>{{ d.summary.declared_tracking_start }}</strong> 已宣告完整起點</span>{% endif %}
       {% if d.summary.future %}<span><strong>{{ d.summary.future }}</strong> 未來</span>{% endif %}
     </div>
   </div>

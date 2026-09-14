@@ -30,6 +30,7 @@ EQUITY_ROLES = frozenset(
     }
 )
 SOURCE_MODES = frozenset({"hidden", "basename", "relative"})
+TRACKING_MODES = frozenset({"transactions", "balance-only"})
 
 
 def _positive_int(value: Any, name: str) -> int:
@@ -197,6 +198,39 @@ def _short_filename(
 
 def _optional_string(value: Any) -> str | None:
     return None if value is None else str(value)
+
+
+def _tracking_policy(
+    meta: Mapping[str, Any],
+    open_date: dt.date,
+) -> tuple[str, dt.date | None, list[str]]:
+    """Return normalized account tracking metadata and validation issues."""
+
+    issues: list[str] = []
+    raw_mode = meta.get("tracking_mode")
+    if raw_mode is None:
+        mode = "transactions"
+    else:
+        mode = str(raw_mode).strip()
+        if mode not in TRACKING_MODES:
+            mode = "transactions"
+            issues.append("invalid_tracking_mode")
+
+    raw_start = meta.get("transactions_complete_from")
+    complete_from: dt.date | None = None
+    if raw_start is not None:
+        if isinstance(raw_start, dt.date) and not isinstance(raw_start, dt.datetime):
+            complete_from = raw_start
+            if complete_from < open_date:
+                complete_from = None
+                issues.append("invalid_transactions_complete_from")
+        else:
+            issues.append("invalid_transactions_complete_from")
+
+    if mode == "balance-only" and complete_from is not None:
+        issues.append("tracking_policy_conflict")
+
+    return mode, complete_from, issues
 
 
 def _is_generated_transaction(entry: data.Transaction) -> bool:
@@ -432,6 +466,9 @@ def build_account_maintenance(
             close_date = None
 
         allowed_currencies = {str(currency) for currency in open_entry.currencies or ()}
+        tracking_mode, transactions_complete_from, tracking_issues = (
+            _tracking_policy(open_entry.meta, open_entry.date)
+        )
         kind = _account_kind(account, open_entry.meta, roots, settings)
         buffer_account = _is_buffer(account, open_entry.meta, settings)
         equity_role = (
@@ -454,8 +491,24 @@ def build_account_maintenance(
         late_pads = [
             pad for pad in pads if first_date is not None and pad.date > first_date
         ]
+        pads_after_tracking_start = [
+            pad
+            for pad in pads
+            if transactions_complete_from is not None
+            and pad.date >= transactions_complete_from
+        ]
         if not pads:
             pad_status = "none"
+        elif tracking_mode == "balance-only":
+            pad_status = "expected_balance_only"
+        elif transactions_complete_from is not None and pads_after_tracking_start:
+            pad_status = (
+                "multiple_after_tracking_start"
+                if len(pads_after_tracking_start) > 1
+                else "after_tracking_start"
+            )
+        elif transactions_complete_from is not None:
+            pad_status = "accepted_before_tracking_start"
         elif late_pads and len(pads) > 1:
             pad_status = "multiple"
         elif late_pads:
@@ -493,7 +546,20 @@ def build_account_maintenance(
                 }
             )
 
-        if account.startswith(f"{roots[2]}:") and not trackable:
+        boundary_balance_present = bool(
+            transactions_complete_from is not None
+            and any(
+                directive.date == transactions_complete_from
+                for directives in balances_by_account.get(account, {}).values()
+                for directive in directives
+            )
+        )
+
+        if tracking_mode == "balance-only":
+            history_boundary = "balance_only"
+        elif transactions_complete_from is not None:
+            history_boundary = "declared_tracking_start"
+        elif account.startswith(f"{roots[2]}:") and not trackable:
             history_boundary = "equity_role"
         elif pad_status in {"late", "multiple"}:
             history_boundary = "late_pad"
@@ -524,7 +590,7 @@ def build_account_maintenance(
         else:
             activity_status = "active"
 
-        reasons: list[str] = []
+        reasons: list[str] = list(tracking_issues)
         if lifecycle == "closed" and nonzero:
             reasons.append("closed_nonzero")
         if lifecycle == "open" and trackable:
@@ -534,8 +600,17 @@ def build_account_maintenance(
                 reasons.append(activity_status)
         if buffer_account and lifecycle == "open" and nonzero:
             reasons.append("buffer_nonzero")
-        if pad_status in {"late", "multiple", "multiple_initial"}:
+        if pads_after_tracking_start and tracking_mode == "transactions":
+            reasons.append("pad_after_transactions_complete")
+        elif pad_status in {"late", "multiple", "multiple_initial"}:
             reasons.append("pad_gap")
+        if (
+            tracking_mode == "transactions"
+            and transactions_complete_from is not None
+            and transactions_complete_from <= today
+            and not boundary_balance_present
+        ):
+            reasons.append("tracking_boundary_missing_balance")
         if (
             equity_role in {"opening_history", "untraceable"}
             and lifecycle == "open"
@@ -544,11 +619,16 @@ def build_account_maintenance(
         ):
             reasons.append("equity_recent_usage")
 
-        backfill_candidate = history_boundary in {
-            "equity_seeded",
-            "late_pad",
-            "opening_pad",
-        }
+        if tracking_mode == "balance-only":
+            backfill_candidate = False
+        elif transactions_complete_from is not None:
+            backfill_candidate = bool(pads_after_tracking_start)
+        else:
+            backfill_candidate = history_boundary in {
+                "equity_seeded",
+                "late_pad",
+                "opening_pad",
+            }
 
         price_units: list[dict[str, Any]] = []
         if kind in settings.investment_kinds:
@@ -601,6 +681,9 @@ def build_account_maintenance(
             "days_inactive": days_inactive,
             "activity_count": activity_count.get(account, 0),
             "activity_status": activity_status,
+            "tracking_mode": tracking_mode,
+            "transactions_complete_from": _iso(transactions_complete_from),
+            "tracking_boundary_balance": boundary_balance_present,
             "pad_status": pad_status,
             "pads": [
                 {"date": _iso(pad.date), "source_account": pad.source_account}
@@ -663,6 +746,12 @@ def build_account_maintenance(
             "future": sum(row["lifecycle"] == "future" for row in rows),
             "needs_review": sum(row["needs_review"] for row in rows),
             "backfill": sum(row["backfill_candidate"] for row in rows),
+            "balance_only": sum(
+                row["tracking_mode"] == "balance-only" for row in rows
+            ),
+            "declared_tracking_start": sum(
+                row["transactions_complete_from"] is not None for row in rows
+            ),
             "nonzero": sum(row["nonzero"] for row in rows),
             "zero": sum(not row["nonzero"] for row in rows),
         }
@@ -727,6 +816,12 @@ def build_account_maintenance(
         "future": sum(row["lifecycle"] == "future" for row in rows),
         "needs_review": sum(row["needs_review"] for row in rows),
         "backfill": sum(row["backfill_candidate"] for row in rows),
+        "balance_only": sum(
+            row["tracking_mode"] == "balance-only" for row in rows
+        ),
+        "declared_tracking_start": sum(
+            row["transactions_complete_from"] is not None for row in rows
+        ),
         "nonzero_buffers": sum(
             row["is_buffer"] and row["lifecycle"] == "open" and row["nonzero"]
             for row in rows
