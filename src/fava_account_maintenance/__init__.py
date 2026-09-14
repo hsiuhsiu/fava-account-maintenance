@@ -11,7 +11,7 @@ from typing import Any
 from beancount.core import data
 from fava.ext import FavaExtensionBase
 
-__version__ = "0.2.2"
+__version__ = "0.3.0"
 
 DEFAULT_INVESTMENT_KINDS = frozenset(
     {"Brokerage", "Education", "Edu", "Exchange", "Fund", "Investment", "Retirement"}

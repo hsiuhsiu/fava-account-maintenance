@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 - 2026-09-13
+
+- Add `transactions_complete_from` account metadata for explicitly accepted
+  historical cutovers while continuing to flag Pads on or after the boundary.
+- Add `tracking_mode: "balance-only"` for accounts intentionally maintained from
+  source-backed balance snapshots without complete transaction detail.
+- Show tracking-policy badges, boundary validation, and account/group counts in
+  the maintenance report.
+
 ## 0.2.2 - 2026-09-13
 
 - Preserve colon separators in client-generated account URLs so Fava's frontend
