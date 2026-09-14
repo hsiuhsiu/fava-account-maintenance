@@ -85,7 +85,7 @@ function fallback(value, empty = "—") {
 
 function accountUrl(account) {
   const prefix = window.location.pathname.split("/extension/")[0];
-  return `${prefix}/account/${encodeURIComponent(account)}/`;
+  return `${prefix}/account/${encodeURI(account)}/`;
 }
 
 function addBadge(parent, label, review = false) {

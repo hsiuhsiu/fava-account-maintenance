@@ -83,6 +83,14 @@ def model(entries, config=None):
 
 
 class AccountMaintenanceModelTest(unittest.TestCase):
+    def test_account_links_preserve_colon_separators(self):
+        script = files("fava_account_maintenance").joinpath(
+            "UpdateGuidance.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("encodeURI(account)", script)
+        self.assertNotIn("encodeURIComponent(account)", script)
+
     def test_explicit_zero_boundary_and_clean_close(self):
         account = "Liabilities:Household:CreditCard:ClosedCard"
         entries = [
