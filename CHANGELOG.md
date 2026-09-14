@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0+personal.2 - 2026-09-14
+
+- Use `balance_frequency` as the tolerated length of a Buffer's current
+  nonzero stretch before adding a review warning.
+- Show the Buffer tolerance status and elapsed nonzero days in account details.
+- Keep immediate nonzero warnings for Buffers without a valid frequency.
+
 ## 0.3.0+personal.1 - 2026-09-13
 
 - Rebase the personal Balance freshness workflow onto public version 0.3.0.

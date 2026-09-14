@@ -25,6 +25,16 @@ const BALANCE = {
   not_applicable: "不適用",
 };
 
+const BUFFER = {
+  zero: "目前為零",
+  within_tolerance: "非零，容忍期內",
+  overdue: "非零，已超過容忍期",
+  requires_zero: "非零，未設定容忍期",
+  closed: "已關閉",
+  future: "尚未開始",
+  not_applicable: "不適用",
+};
+
 const HISTORY = {
   explicit_zero: "明確從零開始",
   opening_pad: "以期初 Pad 匯入",
@@ -86,7 +96,7 @@ const REASON = {
   balance_never: "有核對週期但從未做 Balance assertion",
   balance_overdue: "Balance assertion 已逾期",
   balance_partial: "部分應維護的幣別沒有 Balance assertion",
-  buffer_nonzero: "預期歸零的 Buffer 目前仍有餘額",
+  buffer_nonzero: "Buffer 非零，已需檢查是否歸零",
   pad_gap: "Pad 不只出現在單一、乾淨的期初位置",
   pad_after_transactions_complete: "宣告完整流水起點後仍出現 Pad",
   tracking_boundary_missing_balance: "完整流水起點當日缺少 Balance 錨點",
@@ -385,9 +395,15 @@ function renderAccount(detail, row) {
   if (row.is_buffer) {
     const buffer = addSection(detail, "Buffer 狀況");
     addKeyValues(buffer, [
+      ["狀態", BUFFER[row.buffer_status] || row.buffer_status],
       ["目前餘額", row.inventory_text],
       ["最近歸零", row.last_zero_date],
       ["本段非零自", row.nonzero_since],
+      ["本段非零日數", row.buffer_nonzero_days],
+      [
+        "非零容忍期",
+        row.balance_frequency ? `${row.balance_frequency} 天` : "未設定（立即提醒）",
+      ],
       ["最近對手帳戶", row.recent_counterparts.join(" · ") || null],
     ]);
   }

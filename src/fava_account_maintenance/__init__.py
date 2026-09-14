@@ -11,7 +11,7 @@ from typing import Any
 from beancount.core import data
 from fava.ext import FavaExtensionBase
 
-__version__ = "0.3.0+personal.1"
+__version__ = "0.3.0+personal.2"
 
 PERPETUAL_ZERO_YEAR = 2099
 BALANCE_FRESHNESS_LOOKAHEAD = dt.timedelta(days=1)
@@ -728,6 +728,30 @@ def build_account_maintenance(
         else:
             activity_status = "active"
 
+        buffer_nonzero_days = (
+            max((today - nonzero_since[account]).days, 0)
+            if buffer_account
+            and lifecycle == "open"
+            and nonzero
+            and nonzero_since.get(account) is not None
+            else None
+        )
+        if not buffer_account:
+            buffer_status = "not_applicable"
+        elif lifecycle != "open":
+            buffer_status = lifecycle
+        elif not nonzero:
+            buffer_status = "zero"
+        elif frequency is None:
+            buffer_status = "requires_zero"
+        elif (
+            buffer_nonzero_days is not None
+            and buffer_nonzero_days <= frequency
+        ):
+            buffer_status = "within_tolerance"
+        else:
+            buffer_status = "overdue"
+
         reasons: list[str] = list(tracking_issues)
         if lifecycle == "closed" and nonzero:
             reasons.append("closed_nonzero")
@@ -743,7 +767,7 @@ def build_account_maintenance(
                 "partial",
             }:
                 reasons.append(f"balance_{balance_status}")
-        if buffer_account and lifecycle == "open" and nonzero:
+        if buffer_status in {"requires_zero", "overdue"}:
             reasons.append("buffer_nonzero")
         if pads_after_tracking_start and tracking_mode == "transactions":
             reasons.append("pad_after_transactions_complete")
@@ -843,6 +867,8 @@ def build_account_maintenance(
             "equity_counterparts": equity_counterparts,
             "equity_role": equity_role,
             "is_buffer": buffer_account,
+            "buffer_status": buffer_status,
+            "buffer_nonzero_days": buffer_nonzero_days,
             "last_zero_date": _iso(last_zero_date.get(account) or open_entry.date),
             "nonzero_since": _iso(nonzero_since.get(account)),
             "recent_counterparts": recent_counterparts.get(account, []),

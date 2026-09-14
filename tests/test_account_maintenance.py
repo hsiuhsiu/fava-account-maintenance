@@ -443,6 +443,70 @@ class AccountMaintenanceModelTest(unittest.TestCase):
         self.assertEqual(buffer_row["nonzero_since"], "2026-08-01")
         self.assertEqual(result["summary"]["nonzero_buffers"], 1)
 
+    def test_balance_frequency_is_buffer_nonzero_tolerance(self):
+        at_limit = "Assets:Household:Buffer:AtLimit"
+        overdue = "Assets:Household:Buffer:Overdue"
+        reset = "Assets:Household:Buffer:Reset"
+        entries = [
+            open_account(
+                dt.date(2020, 1, 1),
+                at_limit,
+                balance_frequency=30,
+            ),
+            open_account(
+                dt.date(2020, 1, 1),
+                overdue,
+                balance_frequency=30,
+            ),
+            open_account(
+                dt.date(2020, 1, 1),
+                reset,
+                balance_frequency=30,
+            ),
+            transaction(
+                TODAY - dt.timedelta(days=30),
+                [(at_limit, 10, "USD"), ("Assets:Ignored", -10, "USD")],
+            ),
+            transaction(
+                TODAY - dt.timedelta(days=31),
+                [(overdue, 10, "USD"), ("Assets:Ignored", -10, "USD")],
+            ),
+            transaction(
+                TODAY - dt.timedelta(days=100),
+                [(reset, 10, "USD"), ("Assets:Ignored", -10, "USD")],
+            ),
+            transaction(
+                TODAY - dt.timedelta(days=5),
+                [(reset, -10, "USD"), ("Assets:Ignored", 10, "USD")],
+            ),
+            transaction(
+                TODAY - dt.timedelta(days=2),
+                [(reset, 10, "USD"), ("Assets:Ignored", -10, "USD")],
+            ),
+            balance(TODAY, at_limit, 10),
+            balance(TODAY, overdue, 10),
+            balance(TODAY, reset, 10),
+        ]
+
+        result = model(entries)
+        at_limit_row = result["node_data"][f"account:{at_limit}"]
+        overdue_row = result["node_data"][f"account:{overdue}"]
+        reset_row = result["node_data"][f"account:{reset}"]
+
+        self.assertEqual(at_limit_row["buffer_status"], "within_tolerance")
+        self.assertEqual(at_limit_row["buffer_nonzero_days"], 30)
+        self.assertNotIn("buffer_nonzero", at_limit_row["reasons"])
+        self.assertEqual(overdue_row["buffer_status"], "overdue")
+        self.assertEqual(overdue_row["buffer_nonzero_days"], 31)
+        self.assertIn("buffer_nonzero", overdue_row["reasons"])
+        self.assertEqual(reset_row["buffer_status"], "within_tolerance")
+        self.assertEqual(
+            reset_row["nonzero_since"],
+            (TODAY - dt.timedelta(days=2)).isoformat(),
+        )
+        self.assertEqual(reset_row["buffer_nonzero_days"], 2)
+        self.assertNotIn("buffer_nonzero", reset_row["reasons"])
+
     def test_open_zero_dormant_is_only_a_review_candidate(self):
         account = "Liabilities:Household:CreditCard:Dormant"
         entries = [

@@ -39,7 +39,7 @@ The extension does not edit the ledger and does not make network requests.
 
 ## Compatibility
 
-Version 0.3.0+personal.1 is based on public version 0.3.0 and tested with Fava
+Version 0.3.0+personal.2 is based on public version 0.3.0 and tested with Fava
 1.30.12, Beancount 3.2, and Python 3.12.
 The dependency is intentionally limited to Fava 1.30.x until newer versions are
 tested. Fava describes its extension API as unstable, so test upgrades before
@@ -120,7 +120,7 @@ Supported `open` metadata:
 
 | Key | Meaning |
 | --- | --- |
-| `balance_frequency` | Expected number of days between Balance assertions. |
+| `balance_frequency` | Expected number of days between Balance assertions; for a recognized Buffer, also the tolerated length of its current nonzero stretch. |
 | `nickname` | Short label displayed beside the full account name. |
 | `purpose` | Reminder of why the account exists. |
 | `tracking_mode` | Omit for complete transaction tracking; use `"balance-only"` when source-backed balance snapshots are authoritative and individual activity may be incomplete. |
@@ -138,6 +138,13 @@ For example:
 2020-01-01 open Assets:Household:Clearing:Transfers USD
   maintenance_buffer: TRUE
 ```
+
+For a recognized Buffer, `balance_frequency` is also its nonzero tolerance.
+The current nonzero stretch starts when a transaction moves the account from
+zero to nonzero and resets when transactions bring it back to zero. The report
+adds the Buffer review warning only after that stretch exceeds the configured
+number of days. A Buffer without a valid frequency continues to warn
+immediately; Balance assertions verify the account but do not reset this clock.
 
 ### Historical cutovers and balance-only accounts
 
